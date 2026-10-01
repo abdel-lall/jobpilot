@@ -2,15 +2,15 @@
 
 ## Repository
 
-Phase 3 is complete on branch `phase/03-authentication-api`. Phase 4 is next.
+Phase 4 is complete on branch `phase/04-authentication-ui`. Phase 5 is next.
 
 ## Phases
 
 - 01 — Monorepo and local runtime — Complete
 - 02 — Database foundation — Complete
 - 03 — Authentication API — Complete
-- 04 — Authentication UI — Next
-- 05 — Candidate profile API — Not started
+- 04 — Authentication UI — Complete
+- 05 — Candidate profile API — Next
 - 06 — Candidate profile UI — Not started
 - 07 — Resume file storage — Not started
 - 08 — Jobs API — Not started

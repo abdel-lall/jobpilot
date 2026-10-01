@@ -3,5 +3,6 @@ WORKDIR /app
 RUN corepack enable
 COPY . .
 RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @jobpilot/shared build
 EXPOSE 5173
 CMD ["pnpm", "--filter", "@jobpilot/web", "dev"]
