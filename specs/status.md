@@ -2,7 +2,7 @@
 
 ## Repository
 
-Phase 8 is complete on branch `phase/08-jobs-api`. Phase 9 is next.
+Phase 9 is complete on branch `phase/09-jobs-ui-dashboard`. Phase 10 is next.
 
 ## Phases
 
@@ -14,8 +14,8 @@ Phase 8 is complete on branch `phase/08-jobs-api`. Phase 9 is next.
 - 06 — Candidate profile UI — Complete
 - 07 — Resume file storage — Complete
 - 08 — Jobs API — Complete
-- 09 — Jobs UI and dashboard shell — Next
-- 10 — Job analysis — Not started
+- 09 — Jobs UI and dashboard shell — Complete
+- 10 — Job analysis — Next
 - 11 — MCP exact tools — Not started
 - 12 — Embeddings and candidate search — Not started
 - 13 — Tailored resume workflow — Not started
