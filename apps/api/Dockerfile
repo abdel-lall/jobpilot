@@ -3,6 +3,7 @@ WORKDIR /app
 RUN corepack enable
 COPY . .
 RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @jobpilot/database build
 RUN pnpm --filter @jobpilot/api build
 ENV PORT=3000
 EXPOSE 3000

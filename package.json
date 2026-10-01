@@ -13,6 +13,11 @@
     "typescript": "^5.9.2"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "prisma",
+      "@prisma/engines",
+      "@prisma/client"
+    ]
   }
 }

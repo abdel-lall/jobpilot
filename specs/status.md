@@ -2,13 +2,13 @@
 
 ## Repository
 
-Phase 1 is complete on branch `phase/01-monorepo-runtime`. Phase 2 is next.
+Phase 2 is complete on branch `phase/02-database-foundation`. Phase 3 is next.
 
 ## Phases
 
 - 01 — Monorepo and local runtime — Complete
-- 02 — Database foundation — Next
-- 03 — Authentication API — Not started
+- 02 — Database foundation — Complete
+- 03 — Authentication API — Next
 - 04 — Authentication UI — Not started
 - 05 — Candidate profile API — Not started
 - 06 — Candidate profile UI — Not started
