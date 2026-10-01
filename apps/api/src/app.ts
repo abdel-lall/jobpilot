@@ -5,6 +5,7 @@ import { healthRouter } from "./routes/health.js";
 import { createAuthRouter } from "./routes/auth.js";
 import { createProfileRouter } from "./routes/profile.js";
 import { createResumeRouter } from "./routes/resumes.js";
+import { createJobsRouter } from "./routes/jobs.js";
 
 export type { PrismaClient };
 
@@ -33,5 +34,6 @@ export function createApp(options?: AuthServiceOptions) {
   app.use(createAuthRouter(options));
   app.use(createProfileRouter());
   app.use(createResumeRouter());
+  app.use(createJobsRouter());
   return app;
 }

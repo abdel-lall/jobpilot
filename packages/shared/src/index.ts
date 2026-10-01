@@ -46,3 +46,14 @@ export {
 
 export { resumeFileSchema, type ResumeFile } from "./resume-file.js";
 
+export {
+  createJobBodySchema,
+  jobSchema,
+  jobStatusSchema,
+  updateJobBodySchema,
+  type CreateJobBody,
+  type Job,
+  type JobStatus,
+  type UpdateJobBody,
+} from "./job.js";
+
