@@ -1,8 +1,16 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { loginBodySchema, registerBodySchema, type LoginBody, type RegisterBody } from "@jobpilot/shared";
+import {
+  loginBodySchema,
+  registerBodySchema,
+  type LoginBody,
+  type PublicUser,
+  type RegisterBody,
+} from "@jobpilot/shared";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useSession } from "@/auth/session";
 import { Button } from "@/components/ui/button";
+import { Dashboard } from "@/jobs/dashboard";
 import { ProfileSections } from "@/profile/sections";
 import {
   Card,
@@ -36,27 +44,7 @@ export function AuthPage() {
   }
 
   if (session.status === "signed-in" && session.user !== null) {
-    return (
-      <main
-        data-testid="signed-in"
-        className="mx-auto grid min-h-screen w-full max-w-3xl content-start gap-6 p-6"
-      >
-        <Card>
-          <CardHeader>
-            <CardTitle>Signed in</CardTitle>
-            <CardDescription>Current account</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4">
-            <p data-testid="user-email">{session.user.email}</p>
-            <Button type="button" onClick={() => void session.logout()}>
-              Log out
-            </Button>
-            {session.error !== null ? <p role="alert">{session.error}</p> : null}
-          </CardContent>
-        </Card>
-        <ProfileSections userId={session.user.id} accessToken={session.accessToken} />
-      </main>
-    );
+    return <SignedInPage user={session.user} accessToken={session.accessToken} />;
   }
 
   return (
@@ -71,6 +59,51 @@ export function AuthPage() {
           <LoginSection />
         </div>
       </div>
+    </main>
+  );
+}
+
+function SignedInPage({
+  user,
+  accessToken,
+}: {
+  user: PublicUser;
+  accessToken: string | null;
+}) {
+  const session = useSession();
+  const [view, setView] = useState<"profile" | "dashboard">("profile");
+
+  return (
+    <main
+      data-testid="signed-in"
+      className="mx-auto grid min-h-screen w-full max-w-3xl content-start gap-6 p-6"
+    >
+      <Card>
+        <CardHeader>
+          <CardTitle>Signed in</CardTitle>
+          <CardDescription>Current account</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          <p data-testid="user-email">{user.email}</p>
+          <Button type="button" onClick={() => void session.logout()}>
+            Log out
+          </Button>
+          {session.error !== null ? <p role="alert">{session.error}</p> : null}
+        </CardContent>
+      </Card>
+      <nav data-testid="app-nav" className="flex flex-wrap gap-2">
+        <Button type="button" data-testid="nav-profile" onClick={() => setView("profile")}>
+          Profile
+        </Button>
+        <Button type="button" data-testid="nav-dashboard" onClick={() => setView("dashboard")}>
+          Dashboard
+        </Button>
+      </nav>
+      {view === "profile" ? (
+        <ProfileSections userId={user.id} accessToken={accessToken} />
+      ) : (
+        <Dashboard userId={user.id} accessToken={accessToken} />
+      )}
     </main>
   );
 }
