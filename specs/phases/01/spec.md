@@ -62,8 +62,9 @@ These constraints come from Phase 1, the roadmap rules that bind every phase, an
 - `apps/web` uses React, TypeScript, Vite, Tailwind CSS, shadcn/ui, and TanStack Query. The single page calls the health route through TanStack Query.
 - `packages/shared`, `packages/database`, `packages/ai`, and `apps/portfolio-mcp` must typecheck and must not contain later-phase behavior. In particular, `packages/ai` does not call Gemini and does not gain a workflow or a model client in this phase.
 - Secrets come from environment variables. The Gemini key is defined only for the API. Never expose Gemini API keys to the frontend. The web app has no Gemini API key.
-- Docker Compose starts the API, the web app, and PostgreSQL. The database image must be pgvector-capable. This phase does not apply a schema or migration.
+- Docker Compose starts the API, the web app, and PostgreSQL. The database image must be pgvector-capable. In Phase 1, PostgreSQL only needs to start and be reachable/healthy. Schema, Prisma connectivity, migrations, and vector-extension verification belong to Phase 2.
 - GitHub Actions installs dependencies, typechecks, and runs Vitest. That Vitest run includes the Supertest health-route test.
 - Do not add a queue, a worker process, or a job runner.
 - Prefer simple implementations over unnecessary abstractions.
+- Do not introduce architectural abstractions, shared service layers, or helper packages for future phases unless Phase 1 directly requires them.
 - Keep this phase one independently implementable, reviewable, testable, and committable slice.
