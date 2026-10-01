@@ -8,6 +8,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@jobpilot/database": "workspace:*",
     "express": "^4.21.2"
   },
   "devDependencies": {

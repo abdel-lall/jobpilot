@@ -1,1 +1,1 @@
-export const packageName = "@jobpilot/database" as const;
+export { PrismaClient } from "./generated/prisma/client.js";

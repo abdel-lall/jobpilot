@@ -1,116 +1,66 @@
 # Phase 2 — Validation
 
-Not started. Complete this checklist during implementation. Leave items unchecked until the command or inspection passes.
+Validation passed on 2026-09-30. Review passed with no changes required before commit.
 
 ## Acceptance criteria
 
-- Migrations apply to the Compose database.
-- The `vector` extension is present.
-- The API can import the shared Prisma client and does not connect to the database during startup.
-- The schema has no product tables.
-- The Phase 1 health route and web page still work.
-- The web app has no Gemini API key and no database URL in frontend code.
+- PASS — Migrations apply to the Compose database.
+- PASS — The `vector` extension is present.
+- PASS — The API can import the shared Prisma client and does not connect to the database during startup. The import is type-only. Compiled `apps/api/dist/app.js` does not import `@jobpilot/database`. The API container has no `DATABASE_URL`. After `docker compose up --build -d`, the API log was `API listening on port 3000`.
+- PASS — The schema has no product tables.
+- PASS — The Phase 1 health route still works. The rendered web page was not browser-exercised in this phase. `GET http://localhost:5173/` returned `200`, and `apps/web` source remained unchanged.
+- PASS — The web app has no Gemini API key and no database URL in frontend code.
 
 ## Required automated tests
 
-- `@jobpilot/database` Vitest integration test: `PrismaClient` uses `@prisma/adapter-pg`, connects to the Compose database, and `vector` is installed in `pg_extension`. This test is the only Phase 2 database connectivity check.
-- The Phase 1 Supertest health-route test still passes through root `pnpm test`.
+- PASS — `@jobpilot/database` Vitest integration test: `PrismaClient` uses `@prisma/adapter-pg`, connects to the Compose database, and `vector` is installed in `pg_extension`. This test is the only Phase 2 database connectivity check.
+- PASS — The Phase 1 Supertest health-route test still passes through root `pnpm test`.
 
 No other automated test is required for this phase. Playwright is not required until Phase 4. Gemini is not called, so this phase does not add a stubbed model client. GitHub Actions is not given a PostgreSQL service in this phase.
 
-## Manual verification steps
+## Commands run
 
-1. Confirm the Compose PostgreSQL service is the Phase 1 service: image `pgvector/pgvector:pg16`, user `postgres`, password `jobpilot`, port `5432`.
-2. Confirm `packages/database` pins `prisma` and `@prisma/client` to the same exact Prisma 7 version. The config filename is the one that version supports; Prisma 7.10 or later uses `prisma7.config.ts`. The generator is `prisma-client` with an explicit output path. `PrismaClient` uses `@prisma/adapter-pg`. Neither dependency is `latest`. Confirm `packages/database/package.json` has `"type": "module"` and that `packages/database/tsconfig.json` still extends `tsconfig.base.json` with `NodeNext` module settings.
-3. Apply the Phase 2 migration to that database. Confirm the migration SQL contains `CREATE EXTENSION IF NOT EXISTS vector;`.
-4. Query `pg_extension` and confirm a row for `vector`.
-5. List relations and confirm the only new relation is Prisma migration bookkeeping. No user, session, profile, resume, job, analysis, or embedding tables are present.
-6. Confirm `apps/api` imports the shared Prisma client from `@jobpilot/database` and does not add a database connection during API startup. Confirm `GET /health` still returns `200` with `{ "status": "ok" }`.
-7. Confirm the Prisma schema declares no product models.
-8. Confirm `.env.example` documents the database URL, the Gemini key remains API-only, and `apps/web` source contains neither a Gemini key nor a database URL.
-9. Run the `@jobpilot/database` Vitest integration test against the Compose database, and run the existing API Vitest suite. The database integration test is the only connectivity check. API startup does not connect.
+Commands ran from the repository root. `DATABASE_URL` was set only in the shell for Prisma migrate and the database test.
 
-## Commands
+- `docker compose up -d postgres` — started `jobpilot-postgres-1` from `pgvector/pgvector:pg16` on port `5432`.
+- `docker compose ps` — the Postgres container became healthy. User `postgres`, password `jobpilot`. No second database service.
+- `pnpm install` — succeeded. `packages/database` `prepare` ran `prisma generate` and wrote the Prisma 7.10.0 client. A later install reported the lockfile up to date and generated the client again.
+- `pnpm --filter @jobpilot/database exec prisma generate` — succeeded. Generated Prisma Client 7.10.0 to `packages/database/src/generated/prisma`.
+- `pnpm --filter @jobpilot/database typecheck` — succeeded (`tsc --noEmit`) with the generated client.
+- `pnpm typecheck` — succeeded for the whole monorepo.
+- `DATABASE_URL=postgresql://postgres:jobpilot@localhost:5432/postgres pnpm --filter @jobpilot/database exec prisma migrate deploy` — succeeded. Applied `20260930120000_enable_vector`.
+- `docker compose exec postgres psql -U postgres -c "SELECT extname FROM pg_extension WHERE extname = 'vector';"` — one row, `vector`.
+- `docker compose exec postgres psql -U postgres -c "\dt"` — `public._prisma_migrations` only.
+- `DATABASE_URL=postgresql://postgres:jobpilot@localhost:5432/postgres pnpm --filter @jobpilot/database test` — succeeded. Vitest ran `packages/database/src/client.integration.test.ts`: 1 file, 1 test passed.
+- `pnpm test` — succeeded. Vitest ran `apps/api/src/health.test.ts`: 1 file, 1 test passed.
+- `docker compose up --build -d` — rebuilt and started the API and web images. Postgres stayed the existing healthy service.
+- `curl -sS http://localhost:3000/health` — `200` and `{"status":"ok"}`.
+- `curl -sS -o /dev/null -w "%{http_code}" http://localhost:5173/` — `200`. The rendered page was not opened in a browser.
 
-Run these from the repository root after implementation. Set the database URL only in the shell for Prisma and the database test.
-
-Start the existing Compose database and wait until it is healthy:
-
-```bash
-docker compose up -d postgres
-docker compose ps
-```
-
-Install, generate the client, and typecheck:
-
-```bash
-pnpm install
-pnpm --filter @jobpilot/database exec prisma generate
-pnpm --filter @jobpilot/database typecheck
-pnpm typecheck
-```
-
-`pnpm --filter @jobpilot/database typecheck` must succeed with the generated Prisma 7 client. Root `pnpm typecheck` must still succeed for the whole monorepo.
-
-Apply migrations to the Compose database:
-
-```bash
-DATABASE_URL=postgresql://postgres:jobpilot@localhost:5432/postgres pnpm --filter @jobpilot/database exec prisma migrate deploy
-```
-
-Confirm the extension and that no product tables exist:
-
-```bash
-docker compose exec postgres psql -U postgres -c "SELECT extname FROM pg_extension WHERE extname = 'vector';"
-docker compose exec postgres psql -U postgres -c "\dt"
-```
-
-Expected extension result: one row, `vector`.
-
-Expected relation list: `_prisma_migrations` only.
-
-Run the required Vitest files:
-
-```bash
-DATABASE_URL=postgresql://postgres:jobpilot@localhost:5432/postgres pnpm --filter @jobpilot/database test
-pnpm test
-```
-
-`pnpm --filter @jobpilot/database test` is the only database connectivity check. It must construct `PrismaClient` with `@prisma/adapter-pg`, connect, and assert that `vector` is installed.
-
-`pnpm test` must pass the existing `GET /health` Supertest.
-
-Confirm the running API health route:
-
-```bash
-docker compose up --build -d
-curl -sS http://localhost:3000/health
-```
-
-Expected health body: `{"status":"ok"}`.
+API startup does not connect to the database. The shared client import is `import type`. The emitted API module has no `@jobpilot/database` import. Compose does not set `DATABASE_URL` on the API service. The container log after startup was `API listening on port 3000`.
 
 ## Completion checklist
 
-- [ ] `packages/database` owns the Prisma schema, the version-appropriate Prisma 7 config file, generated client, and migration history.
-- [ ] `prisma` and `@prisma/client` are pinned to the same exact Prisma 7 version. Neither dependency is `latest`.
-- [ ] The config filename is the one that exact version supports. Prisma 7.10 or later uses `prisma7.config.ts`.
-- [ ] Client generation uses the `prisma-client` generator with an explicit output path.
-- [ ] `packages/database/package.json` has `"type": "module"`.
-- [ ] `packages/database/tsconfig.json` still extends `tsconfig.base.json` with `NodeNext` module settings.
-- [ ] `pnpm --filter @jobpilot/database typecheck` succeeds with the generated Prisma 7 client.
-- [ ] `PrismaClient` uses the PostgreSQL driver adapter `@prisma/adapter-pg`.
-- [ ] The first migration SQL contains `CREATE EXTENSION IF NOT EXISTS vector;` and adds no product tables.
-- [ ] `DATABASE_URL=postgresql://postgres:jobpilot@localhost:5432/postgres pnpm --filter @jobpilot/database exec prisma migrate deploy` succeeds against the Compose database.
-- [ ] `SELECT extname FROM pg_extension WHERE extname = 'vector'` returns `vector`.
-- [ ] `\dt` shows `_prisma_migrations` and no product tables.
-- [ ] `@jobpilot/database` exports the generated Prisma client.
-- [ ] `apps/api` imports that shared client and does not add a database connection during API startup.
-- [ ] Root `pnpm typecheck` succeeds, including `@jobpilot/database` with the generated Prisma 7 client.
-- [ ] `DATABASE_URL=postgresql://postgres:jobpilot@localhost:5432/postgres pnpm --filter @jobpilot/database test` is the only connectivity check: it uses `@prisma/adapter-pg` and passes the `vector` extension assertion.
-- [ ] `pnpm test` still passes the Phase 1 health-route Supertest.
-- [ ] `GET http://localhost:3000/health` returns `200` and `{"status":"ok"}`.
-- [ ] The database URL is documented in `.env.example` and is not committed as a secret in application source.
-- [ ] The Gemini key remains defined only for the API. `apps/web` has no Gemini API key and no database URL.
-- [ ] Compose still uses `pgvector/pgvector:pg16`. No second database service was added.
-- [ ] Phase 1 CI is unchanged: it runs `pnpm typecheck` and `pnpm test` and does not start PostgreSQL.
-- [ ] No Phase 3 or later work is included: no auth API, no product models, no web authentication UI, no AI, no MCP, and no vector queries.
+- [x] PASS — `packages/database` owns the Prisma schema, the version-appropriate Prisma 7 config file, generated client, and migration history.
+- [x] PASS — `prisma` and `@prisma/client` are pinned to the same exact Prisma 7 version. Neither dependency is `latest`.
+- [x] PASS — The config filename is the one that exact version supports. Prisma 7.10 or later uses `prisma7.config.ts`.
+- [x] PASS — Client generation uses the `prisma-client` generator with an explicit output path.
+- [x] PASS — `packages/database/package.json` has `"type": "module"`.
+- [x] PASS — `packages/database/tsconfig.json` still extends `tsconfig.base.json` with `NodeNext` module settings.
+- [x] PASS — `pnpm --filter @jobpilot/database typecheck` succeeds with the generated Prisma 7 client.
+- [x] PASS — `PrismaClient` uses the PostgreSQL driver adapter `@prisma/adapter-pg`.
+- [x] PASS — The first migration SQL contains `CREATE EXTENSION IF NOT EXISTS vector;` and adds no product tables.
+- [x] PASS — `DATABASE_URL=postgresql://postgres:jobpilot@localhost:5432/postgres pnpm --filter @jobpilot/database exec prisma migrate deploy` succeeds against the Compose database.
+- [x] PASS — `SELECT extname FROM pg_extension WHERE extname = 'vector'` returns `vector`.
+- [x] PASS — `\dt` shows `_prisma_migrations` and no product tables.
+- [x] PASS — `@jobpilot/database` exports the generated Prisma client.
+- [x] PASS — `apps/api` imports that shared client and does not add a database connection during API startup.
+- [x] PASS — Root `pnpm typecheck` succeeds, including `@jobpilot/database` with the generated Prisma 7 client.
+- [x] PASS — `DATABASE_URL=postgresql://postgres:jobpilot@localhost:5432/postgres pnpm --filter @jobpilot/database test` is the only connectivity check: it uses `@prisma/adapter-pg` and passes the `vector` extension assertion.
+- [x] PASS — `pnpm test` still passes the Phase 1 health-route Supertest.
+- [x] PASS — `GET http://localhost:3000/health` returns `200` and `{"status":"ok"}`.
+- [x] PASS — The database URL is documented in `.env.example` and is not committed as a secret in application source.
+- [x] PASS — The Gemini key remains defined only for the API. `apps/web` has no Gemini API key and no database URL.
+- [x] PASS — Compose still uses `pgvector/pgvector:pg16`. No second database service was added.
+- [x] PASS — Phase 1 CI is unchanged: it runs `pnpm typecheck` and `pnpm test` and does not start PostgreSQL.
+- [x] PASS — No Phase 3 or later work is included: no auth API, no product models, no web authentication UI, no AI, no MCP, and no vector queries.
