@@ -3,6 +3,7 @@ import express, { type NextFunction, type Request, type Response } from "express
 import type { AuthServiceOptions } from "./auth/service.js";
 import { healthRouter } from "./routes/health.js";
 import { createAuthRouter } from "./routes/auth.js";
+import { createProfileRouter } from "./routes/profile.js";
 
 export type { PrismaClient };
 
@@ -13,7 +14,7 @@ function applyCors(request: Request, response: Response, next: NextFunction): vo
     response.setHeader("Access-Control-Allow-Origin", allowedOrigin);
     response.setHeader("Access-Control-Allow-Credentials", "true");
     response.setHeader("Vary", "Origin");
-    response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    response.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
     response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   }
   if (request.method === "OPTIONS") {
@@ -29,5 +30,6 @@ export function createApp(options?: AuthServiceOptions) {
   app.use(express.json());
   app.use(healthRouter);
   app.use(createAuthRouter(options));
+  app.use(createProfileRouter());
   return app;
 }
