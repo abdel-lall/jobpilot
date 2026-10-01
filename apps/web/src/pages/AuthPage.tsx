@@ -3,6 +3,7 @@ import { loginBodySchema, registerBodySchema, type LoginBody, type RegisterBody 
 import { useForm } from "react-hook-form";
 import { useSession } from "@/auth/session";
 import { Button } from "@/components/ui/button";
+import { ProfileSections } from "@/profile/sections";
 import {
   Card,
   CardContent,
@@ -38,9 +39,9 @@ export function AuthPage() {
     return (
       <main
         data-testid="signed-in"
-        className="flex min-h-screen items-center justify-center p-6"
+        className="mx-auto grid min-h-screen w-full max-w-3xl content-start gap-6 p-6"
       >
-        <Card className="w-full max-w-md">
+        <Card>
           <CardHeader>
             <CardTitle>Signed in</CardTitle>
             <CardDescription>Current account</CardDescription>
@@ -53,6 +54,7 @@ export function AuthPage() {
             {session.error !== null ? <p role="alert">{session.error}</p> : null}
           </CardContent>
         </Card>
+        <ProfileSections userId={session.user.id} accessToken={session.accessToken} />
       </main>
     );
   }

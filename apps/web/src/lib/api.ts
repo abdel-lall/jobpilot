@@ -6,7 +6,7 @@ export const API_ORIGIN =
     : configuredOrigin;
 
 type AuthFetchInit = {
-  method: "GET" | "POST";
+  method: "GET" | "POST" | "PATCH" | "DELETE";
   body?: unknown;
   accessToken?: string;
 };
