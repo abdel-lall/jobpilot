@@ -8,7 +8,8 @@
     "test": "vitest run",
     "test:auth": "vitest run --config vitest.auth.config.ts",
     "test:profile": "vitest run --config vitest.profile.config.ts",
-    "test:resumes": "vitest run --config vitest.resumes.config.ts"
+    "test:resumes": "vitest run --config vitest.resumes.config.ts",
+    "test:jobs": "vitest run --config vitest.jobs.config.ts"
   },
   "dependencies": {
     "@jobpilot/database": "workspace:*",
