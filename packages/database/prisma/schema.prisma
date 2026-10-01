@@ -20,6 +20,7 @@ model User {
   workExperiences WorkExperience[]
   projects        Project[]
   certifications  Certification[]
+  resumeFiles     ResumeFile[]
 }
 
 model RefreshSession {
@@ -101,6 +102,19 @@ model Certification {
   expiresOn DateTime? @db.Date
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model ResumeFile {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fileName    String
+  contentType String
+  byteSize    Int
+  storagePath String
+  createdAt   DateTime @default(now())
 
   @@index([userId])
 }

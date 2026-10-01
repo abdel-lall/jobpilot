@@ -8,13 +8,18 @@ export const API_ORIGIN =
 type AuthFetchInit = {
   method: "GET" | "POST" | "PATCH" | "DELETE";
   body?: unknown;
+  formData?: FormData;
   accessToken?: string;
 };
 
 export async function authFetch(path: string, init: AuthFetchInit): Promise<Response> {
   const headers = new Headers();
-  if (init.body !== undefined) {
+  let body: BodyInit | undefined;
+  if (init.formData !== undefined) {
+    body = init.formData;
+  } else if (init.body !== undefined) {
     headers.set("Content-Type", "application/json");
+    body = JSON.stringify(init.body);
   }
   if (init.accessToken !== undefined) {
     headers.set("Authorization", `Bearer ${init.accessToken}`);
@@ -24,7 +29,7 @@ export async function authFetch(path: string, init: AuthFetchInit): Promise<Resp
     method: init.method,
     credentials: "include",
     headers,
-    body: init.body === undefined ? undefined : JSON.stringify(init.body),
+    body,
   });
 }
 

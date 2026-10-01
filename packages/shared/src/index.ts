@@ -44,3 +44,5 @@ export {
   type WorkExperience,
 } from "./profile.js";
 
+export { resumeFileSchema, type ResumeFile } from "./resume-file.js";
+
