@@ -2,8 +2,10 @@ import {
   certificationSchema,
   educationSchema,
   projectSchema,
+  resumeFileSchema,
   skillSchema,
   workExperienceSchema,
+  type ResumeFile,
   type Certification,
   type CreateCertificationBody,
   type CreateEducationBody,
@@ -29,6 +31,7 @@ export const profilePaths = {
   experience: "/profile/experience",
   projects: "/profile/projects",
   certifications: "/profile/certifications",
+  resumes: "/profile/resumes",
 } as const;
 
 const skillListSchema = z.object({ skills: z.array(skillSchema) }).strict();
@@ -36,6 +39,8 @@ const educationListSchema = z.object({ education: z.array(educationSchema) }).st
 const experienceListSchema = z.object({ experience: z.array(workExperienceSchema) }).strict();
 const projectListSchema = z.object({ projects: z.array(projectSchema) }).strict();
 const certificationListSchema = z.object({ certifications: z.array(certificationSchema) }).strict();
+const resumeFileListSchema = z.object({ resumeFiles: z.array(resumeFileSchema) }).strict();
+const resumeFileCreateSchema = z.object({ resumeFile: resumeFileSchema }).strict();
 
 export function profileQueryKey(path: string, userId: string) {
   return [path, userId] as const;
@@ -187,4 +192,61 @@ export function updateCertification(
 
 export function deleteCertification(accessToken: string, id: string): Promise<void> {
   return send(recordPath(profilePaths.certifications, id), "DELETE", accessToken);
+}
+
+export async function listResumeFiles(accessToken: string): Promise<ResumeFile[]> {
+  const parsed = resumeFileListSchema.safeParse(await readJson(profilePaths.resumes, accessToken));
+  if (!parsed.success) {
+    throw new Error("Request failed");
+  }
+  return parsed.data.resumeFiles;
+}
+
+export async function uploadResumeFile(accessToken: string, file: File): Promise<void> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await authFetch(profilePaths.resumes, {
+    method: "POST",
+    accessToken,
+    formData,
+  });
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response));
+  }
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    throw new Error("Request failed");
+  }
+  if (!resumeFileCreateSchema.safeParse(body).success) {
+    throw new Error("Request failed");
+  }
+}
+
+export async function downloadResumeFile(
+  accessToken: string,
+  id: string,
+  fileName: string,
+): Promise<void> {
+  const response = await authFetch(recordPath(profilePaths.resumes, id), {
+    method: "GET",
+    accessToken,
+  });
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response));
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+export function deleteResumeFile(accessToken: string, id: string): Promise<void> {
+  return send(recordPath(profilePaths.resumes, id), "DELETE", accessToken);
 }

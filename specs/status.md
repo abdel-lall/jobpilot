@@ -2,7 +2,7 @@
 
 ## Repository
 
-Phase 6 is complete on branch `phase/06-candidate-profile-ui`. Phase 7 is next.
+Phase 7 is complete on branch `phase/07-resume-file-storage`. Phase 8 is next.
 
 ## Phases
 
@@ -12,8 +12,8 @@ Phase 6 is complete on branch `phase/06-candidate-profile-ui`. Phase 7 is next.
 - 04 — Authentication UI — Complete
 - 05 — Candidate profile API — Complete
 - 06 — Candidate profile UI — Complete
-- 07 — Resume file storage — Next
-- 08 — Jobs API — Not started
+- 07 — Resume file storage — Complete
+- 08 — Jobs API — Next
 - 09 — Jobs UI and dashboard shell — Not started
 - 10 — Job analysis — Not started
 - 11 — MCP exact tools — Not started

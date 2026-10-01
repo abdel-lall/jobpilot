@@ -7,7 +7,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:auth": "vitest run --config vitest.auth.config.ts",
-    "test:profile": "vitest run --config vitest.profile.config.ts"
+    "test:profile": "vitest run --config vitest.profile.config.ts",
+    "test:resumes": "vitest run --config vitest.resumes.config.ts"
   },
   "dependencies": {
     "@jobpilot/database": "workspace:*",
@@ -15,10 +16,12 @@
     "@prisma/adapter-pg": "7.10.0",
     "argon2": "0.44.0",
     "express": "^4.21.2",
-    "jose": "^6.2.12"
+    "jose": "^6.2.12",
+    "multer": "2.4.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.23",
+    "@types/multer": "^2.3.0",
     "@types/node": "^22.19.0",
     "@types/supertest": "^6.0.3",
     "supertest": "^7.1.4",

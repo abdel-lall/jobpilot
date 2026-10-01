@@ -22,6 +22,7 @@ import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-q
 import { useCallback, useState, type FormEvent, type ReactNode } from "react";
 import { useForm, type Control, type FieldPath, type FieldValues } from "react-hook-form";
 import { Button } from "@/components/ui/button";
+import { ResumesSection } from "@/profile/resumes";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Form,
@@ -1056,6 +1057,7 @@ export function ProfileSections({ userId, accessToken }: SectionProps) {
       <ExperienceSection userId={userId} accessToken={accessToken} />
       <ProjectsSection userId={userId} accessToken={accessToken} />
       <CertificationsSection userId={userId} accessToken={accessToken} />
+      <ResumesSection userId={userId} accessToken={accessToken} />
     </>
   );
 }

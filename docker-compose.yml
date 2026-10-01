@@ -24,6 +24,9 @@ services:
       DATABASE_URL: postgresql://postgres:jobpilot@postgres:5432/postgres
       JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:5173}
+      RESUME_STORAGE_DIR: /var/lib/jobpilot/resumes
+    volumes:
+      - resume-files:/var/lib/jobpilot/resumes
     depends_on:
       - postgres
 
@@ -38,3 +41,6 @@ services:
       VITE_API_ORIGIN: http://localhost:3000
     depends_on:
       - api
+
+volumes:
+  resume-files:
