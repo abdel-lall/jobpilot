@@ -1,12 +1,15 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { HealthPage } from "@/pages/HealthPage";
+import { SessionProvider } from "@/auth/session";
+import { AuthPage } from "@/pages/AuthPage";
 
 const queryClient = new QueryClient();
 
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <HealthPage />
+      <SessionProvider>
+        <AuthPage />
+      </SessionProvider>
     </QueryClientProvider>
   );
 }
