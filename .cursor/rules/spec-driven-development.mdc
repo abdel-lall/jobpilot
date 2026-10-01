@@ -1,0 +1,124 @@
+---
+description: Spec-driven development workflow for JobPilot AI
+alwaysApply: true
+---
+
+# JobPilot AI Spec-Driven Development Rule
+
+This repository uses a strict phase-based, human-in-the-loop development workflow.
+
+## Source of truth
+
+Before planning or implementing a phase, read:
+
+- `specs/requirements.md`
+- `specs/tech-stack.md`
+- `specs/roadmap.md`
+- `specs/status.md`
+- the current phase's `spec.md`
+- the current phase's `validation.md`
+
+Approved specification files are the source of truth.
+
+Do not silently change architecture or requirements to match implementation.
+
+## Phase workflow
+
+Every phase follows:
+
+1. create phase branch
+2. derive phase spec and validation from roadmap
+3. human reviews phase specification
+4. produce implementation plan
+5. wait for human approval
+6. implement only the approved phase
+7. run validation
+8. review implementation without modifying it
+9. human approves review
+10. update validation, notes, and status
+11. human approves commit
+12. commit phase
+13. merge phase into `main`
+14. delete completed phase branch
+
+## Human approval gates
+
+Never proceed automatically across these gates:
+
+- specification → implementation planning
+- implementation plan → code changes
+- implementation → fixes after review
+- validation/review → commit
+- commit → merge
+
+When a gate is reached, stop and wait for explicit approval.
+
+## Scope control
+
+Never implement work from a later phase.
+
+Do not add frameworks, services, abstractions, product behavior, tables, APIs, infrastructure, or dependencies for future phases unless the current phase explicitly requires them.
+
+Prefer the smallest implementation that satisfies the current phase.
+
+## Specification protection
+
+During implementation:
+
+- do not modify `specs/requirements.md`
+- do not modify `specs/tech-stack.md`
+- do not modify `specs/roadmap.md`
+- do not modify the current phase `spec.md`
+- do not modify the current phase `validation.md` until validation is complete
+
+If implementation reveals that a specification must change, stop and explain why.
+
+## Git rules
+
+Never commit directly to `main`.
+
+Each phase uses a branch named:
+
+`phase/NN-short-name`
+
+Do not commit or merge without explicit human approval.
+
+Do not rewrite history unless explicitly instructed.
+
+## Review behavior
+
+When asked to review a phase:
+
+- inspect the actual diff
+- compare it directly with the phase specification and validation
+- identify scope creep
+- identify security, architecture, type, dependency, test, and runtime issues
+- classify issues by severity
+- do not modify files unless explicitly instructed
+
+## Validation behavior
+
+Validation must use the commands and acceptance criteria defined in the current phase's `validation.md`.
+
+Do not report PASS unless the corresponding command, test, or inspection actually succeeded.
+
+Record any unverified item explicitly.
+
+## Documentation after validation
+
+After a phase passes:
+
+- update the phase `validation.md`
+- update the phase `notes.md`
+- update `specs/status.md`
+
+Do not modify unrelated phase documentation.
+
+## Engineering principles
+
+- TypeScript strict mode remains enabled.
+- Avoid `any` unless justified.
+- Keep responsibilities separated.
+- Prefer simple implementations over speculative abstractions.
+- Secrets must not be exposed to frontend code.
+- Tests should validate actual required behavior, not merely implementation details.
