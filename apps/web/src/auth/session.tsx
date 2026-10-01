@@ -28,6 +28,7 @@ type SessionState = {
 type SessionContextValue = {
   status: AuthStatus;
   user: PublicUser | null;
+  accessToken: string | null;
   notice: string | null;
   error: string | null;
   register: (input: RegisterBody) => Promise<void>;
@@ -227,6 +228,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     () => ({
       status: session.status,
       user: session.user,
+      accessToken: session.accessToken,
       notice: session.notice,
       error: session.error,
       register,
