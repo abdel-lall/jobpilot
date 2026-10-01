@@ -1,5 +1,15 @@
 import { createApp } from "./app.js";
 
+function requireEnv(name: string): void {
+  const value = process.env[name];
+  if (value === undefined || value.trim().length === 0) {
+    throw new Error(`${name} is required`);
+  }
+}
+
+requireEnv("DATABASE_URL");
+requireEnv("JWT_SECRET");
+
 const port = Number(process.env.PORT ?? 3000);
 
 if (!Number.isInteger(port) || port <= 0) {

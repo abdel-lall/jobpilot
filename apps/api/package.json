@@ -5,11 +5,16 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:auth": "vitest run --config vitest.auth.config.ts"
   },
   "dependencies": {
     "@jobpilot/database": "workspace:*",
-    "express": "^4.21.2"
+    "@jobpilot/shared": "workspace:*",
+    "@prisma/adapter-pg": "7.10.0",
+    "argon2": "0.44.0",
+    "express": "^4.21.2",
+    "jose": "^6.2.12"
   },
   "devDependencies": {
     "@types/express": "^4.17.23",
