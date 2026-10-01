@@ -1,0 +1,27 @@
+# dependencies
+node_modules/
+
+# build
+dist/
+build/
+coverage/
+
+# env and secrets
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+
+# test artifacts
+test-results/
+playwright-report/
+blob-report/
+
+# local file storage (future resume uploads)
+storage/
