@@ -6,7 +6,8 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:auth": "vitest run --config vitest.auth.config.ts"
+    "test:auth": "vitest run --config vitest.auth.config.ts",
+    "test:profile": "vitest run --config vitest.profile.config.ts"
   },
   "dependencies": {
     "@jobpilot/database": "workspace:*",

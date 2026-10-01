@@ -15,6 +15,11 @@ model User {
   passwordHash    String
   createdAt       DateTime         @default(now())
   refreshSessions RefreshSession[]
+  skills          Skill[]
+  educations      Education[]
+  workExperiences WorkExperience[]
+  projects        Project[]
+  certifications  Certification[]
 }
 
 model RefreshSession {
@@ -25,4 +30,77 @@ model RefreshSession {
   expiresAt DateTime
   revokedAt DateTime?
   createdAt DateTime  @default(now())
+}
+
+model Skill {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Education {
+  id           String    @id @default(uuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  institution  String
+  degree       String
+  fieldOfStudy String
+  startDate    DateTime  @db.Date
+  endDate      DateTime? @db.Date
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model WorkExperience {
+  id              String    @id @default(uuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employer        String
+  jobTitle        String
+  startDate       DateTime  @db.Date
+  endDate         DateTime? @db.Date
+  accomplishments String[]
+  technologies    String[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model Project {
+  id              String    @id @default(uuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String
+  description     String
+  url             String?
+  startDate       DateTime? @db.Date
+  endDate         DateTime? @db.Date
+  accomplishments String[]
+  technologies    String[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model Certification {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  issuer    String
+  issuedOn  DateTime  @db.Date
+  expiresOn DateTime? @db.Date
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId])
 }
