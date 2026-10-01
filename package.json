@@ -17,7 +17,8 @@
       "esbuild",
       "prisma",
       "@prisma/engines",
-      "@prisma/client"
+      "@prisma/client",
+      "argon2"
     ]
   }
 }
