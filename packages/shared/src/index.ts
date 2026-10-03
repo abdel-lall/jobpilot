@@ -46,6 +46,8 @@ export {
 
 export { resumeFileSchema, type ResumeFile } from "./resume-file.js";
 
+export { jobAnalysisSchema, type JobAnalysis } from "./job-analysis.js";
+
 export {
   createJobBodySchema,
   jobSchema,

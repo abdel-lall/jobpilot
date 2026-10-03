@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { createStubJobAnalysisModel, type JobAnalysisModel } from "@jobpilot/ai";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@jobpilot/database";
 import request from "supertest";
@@ -9,6 +10,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
 
 delete process.env.GEMINI_API_KEY;
+delete process.env.JOB_ANALYSIS_MODEL;
 
 const databaseUrl = process.env.DATABASE_URL;
 const jwtSecret = process.env.JWT_SECRET;
@@ -25,7 +27,23 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: databaseUrl }),
 });
 
-const app = createApp();
+const stubModel = createStubJobAnalysisModel();
+let analysisCalls = 0;
+const countingModel: JobAnalysisModel = {
+  async analyze(input) {
+    analysisCalls += 1;
+    return stubModel.analyze(input);
+  },
+};
+const rejectingModel: JobAnalysisModel = {
+  async analyze() {
+    throw new Error("provider unavailable");
+  },
+};
+
+const app = createApp({ jobAnalysisModel: countingModel });
+const rejectingApp = createApp({ jobAnalysisModel: rejectingModel });
+const unresolvedApp = createApp();
 const createdEmails: string[] = [];
 const password = "password1";
 
@@ -37,12 +55,35 @@ const sampleJob = {
   jobUrl: "https://example.com/jobs/engineer",
 };
 
-const emptyStatus = {
-  analysisCurrent: false,
+const inactiveStatus = {
   tailoredResumePresent: false,
   interviewPlanPresent: false,
   latestOverallScore: null,
   readinessBadge: null,
+};
+
+function stubAnalysis(description: string) {
+  return {
+    requiredSkills: ["stub-required"],
+    preferredSkills: ["stub-preferred"],
+    responsibilities: ["stub-responsibility"],
+    experienceRequirements: ["stub-experience"],
+    technologies: ["stub-technology"],
+    interviewTopics: ["stub-topic-1", "stub-topic-2"],
+    keywords: [description.slice(0, 200)],
+  };
+}
+
+function currentStatus() {
+  return {
+    analysisCurrent: true,
+    ...inactiveStatus,
+  };
+}
+
+const rejectedStatus = {
+  analysisCurrent: false,
+  ...inactiveStatus,
 };
 
 type JsonObject = Record<string, unknown>;
@@ -56,6 +97,7 @@ type JobRecord = JsonObject & {
   jobLocation: string;
   jobUrl: string | null;
   status: JsonObject;
+  analysis: JsonObject | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -102,6 +144,8 @@ describe("jobs API", () => {
 
   it("returns an empty list and rejects a missing access token", async () => {
     expect(process.env.GEMINI_API_KEY).toBeUndefined();
+    expect(process.env.JOB_ANALYSIS_MODEL).toBeUndefined();
+    const callsBefore = analysisCalls;
     const owner = await registerAndLogin();
     const listed = await request(app).get("/jobs").set("Authorization", `Bearer ${owner.token}`);
     expect(listed.status).toBe(200);
@@ -110,6 +154,11 @@ describe("jobs API", () => {
     const missing = await request(app).get("/jobs");
     expect(missing.status).toBe(401);
     expect(missing.body).toEqual({ error: "Unauthorized" });
+
+    const missingCreate = await request(app).post("/jobs").send(sampleJob);
+    expect(missingCreate.status).toBe(401);
+    expect(missingCreate.body).toEqual({ error: "Unauthorized" });
+    expect(analysisCalls).toBe(callsBefore);
   });
 
   it("creates, lists, gets, partially updates, and deletes a job", async () => {
@@ -121,10 +170,12 @@ describe("jobs API", () => {
 
     expect(created.status).toBe(201);
     const createdJob = jobRecord(created.body as JsonObject);
+    const callsAfterCreate = analysisCalls;
     expect(createdJob).toMatchObject({
       ...sampleJob,
       userId: owner.userId,
-      status: emptyStatus,
+      status: currentStatus(),
+      analysis: stubAnalysis("Build APIs."),
     });
     expect(createdJob.id).toEqual(expect.any(String));
     expect(createdJob.createdAt).toEqual(expect.any(String));
@@ -133,14 +184,18 @@ describe("jobs API", () => {
     const listed = await request(app).get("/jobs").set("Authorization", `Bearer ${owner.token}`);
     expect(listed.status).toBe(200);
     expect(jobRecords(listed.body as JsonObject)).toEqual([createdJob]);
-    expect(jobRecords(listed.body as JsonObject)[0]?.status).toEqual(emptyStatus);
+    expect(jobRecords(listed.body as JsonObject)[0]?.status).toEqual(currentStatus());
 
     const fetched = await request(app)
       .get(`/jobs/${createdJob.id}`)
       .set("Authorization", `Bearer ${owner.token}`);
     expect(fetched.status).toBe(200);
     expect(jobRecord(fetched.body as JsonObject)).toEqual(createdJob);
+    expect(analysisCalls).toBe(callsAfterCreate);
 
+    const storedBeforeTitle = await prisma.jobAnalysis.findUnique({
+      where: { jobId: createdJob.id },
+    });
     const updated = await request(app)
       .patch(`/jobs/${createdJob.id}`)
       .set("Authorization", `Bearer ${owner.token}`)
@@ -152,22 +207,33 @@ describe("jobs API", () => {
       jobTitle: "Senior Engineer",
       userId: owner.userId,
       id: createdJob.id,
-      status: emptyStatus,
+      status: currentStatus(),
+      analysis: stubAnalysis("Build APIs."),
     });
     expect(updatedJob.companyName).toBe(createdJob.companyName);
     expect(updatedJob.jobDescription).toBe(createdJob.jobDescription);
     expect(updatedJob.jobLocation).toBe(createdJob.jobLocation);
     expect(updatedJob.jobUrl).toBe(createdJob.jobUrl);
+    expect(analysisCalls).toBe(callsAfterCreate);
+    expect(await prisma.jobAnalysis.findUnique({ where: { jobId: createdJob.id } })).toEqual(
+      storedBeforeTitle,
+    );
 
     const described = await request(app)
       .patch(`/jobs/${createdJob.id}`)
       .set("Authorization", `Bearer ${owner.token}`)
-      .send({ jobDescription: "Build APIs and keep status empty." });
+      .send({ jobDescription: "Build reliable APIs." });
     expect(described.status).toBe(200);
     const describedJob = jobRecord(described.body as JsonObject);
-    expect(describedJob.jobDescription).toBe("Build APIs and keep status empty.");
-    expect(describedJob.status).toEqual(emptyStatus);
+    expect(describedJob.jobDescription).toBe("Build reliable APIs.");
+    expect(describedJob.status).toEqual(currentStatus());
+    expect(describedJob.analysis).toEqual(stubAnalysis("Build reliable APIs."));
     expect(describedJob.jobTitle).toBe("Senior Engineer");
+    expect(analysisCalls).toBe(callsAfterCreate + 1);
+    const analysisRows = await prisma.jobAnalysis.findMany({ where: { jobId: createdJob.id } });
+    expect(analysisRows).toHaveLength(1);
+    expect(analysisRows[0]?.analyzedDescription).toBe("Build reliable APIs.");
+    expect(analysisRows[0]?.keywords).toEqual(["Build reliable APIs."]);
 
     const deleted = await request(app)
       .delete(`/jobs/${createdJob.id}`)
@@ -180,6 +246,8 @@ describe("jobs API", () => {
       .set("Authorization", `Bearer ${owner.token}`);
     expect(afterDelete.status).toBe(404);
     expect(afterDelete.body).toEqual({ error: "Not found" });
+    expect(await prisma.job.findUnique({ where: { id: createdJob.id } })).toBeNull();
+    expect(await prisma.jobAnalysis.findUnique({ where: { jobId: createdJob.id } })).toBeNull();
   });
 
   it("rejects invalid input, including userId, status, a bad jobUrl, a blank description, and an empty patch", async () => {
@@ -189,6 +257,7 @@ describe("jobs API", () => {
       .set("Authorization", `Bearer ${owner.token}`)
       .send(sampleJob);
     const createdJob = jobRecord(created.body as JsonObject);
+    const callsAfterCreate = analysisCalls;
 
     const withUserId = await request(app)
       .post("/jobs")
@@ -200,7 +269,7 @@ describe("jobs API", () => {
     const withStatus = await request(app)
       .post("/jobs")
       .set("Authorization", `Bearer ${owner.token}`)
-      .send({ ...sampleJob, status: emptyStatus });
+      .send({ ...sampleJob, status: rejectedStatus });
     expect(withStatus.status).toBe(400);
     expect(withStatus.body).toEqual({ error: "Invalid input" });
 
@@ -227,6 +296,7 @@ describe("jobs API", () => {
 
     const listed = await request(app).get("/jobs").set("Authorization", `Bearer ${owner.token}`);
     expect(jobRecords(listed.body as JsonObject)).toEqual([createdJob]);
+    expect(analysisCalls).toBe(callsAfterCreate);
   });
 
   it("hides another user's job and returns 404 for their get, update, and delete", async () => {
@@ -237,6 +307,7 @@ describe("jobs API", () => {
       .set("Authorization", `Bearer ${owner.token}`)
       .send(sampleJob);
     const createdJob = jobRecord(created.body as JsonObject);
+    const callsAfterCreate = analysisCalls;
 
     const otherList = await request(app).get("/jobs").set("Authorization", `Bearer ${other.token}`);
     expect(otherList.status).toBe(200);
@@ -269,9 +340,11 @@ describe("jobs API", () => {
       .set("Authorization", `Bearer ${owner.token}`);
     expect(stillThere.status).toBe(200);
     expect(jobRecord(stillThere.body as JsonObject)).toEqual(createdJob);
+    expect(analysisCalls).toBe(callsAfterCreate);
   });
 
   it("returns 404 for a malformed path id", async () => {
+    const callsBefore = analysisCalls;
     const owner = await registerAndLogin();
     const fetched = await request(app)
       .get("/jobs/not-a-uuid")
@@ -291,6 +364,7 @@ describe("jobs API", () => {
       .set("Authorization", `Bearer ${owner.token}`);
     expect(deleted.status).toBe(404);
     expect(deleted.body).toEqual({ error: "Not found" });
+    expect(analysisCalls).toBe(callsBefore);
   });
 
   it("stores an omitted or null jobUrl as null, clears it with null, and leaves omitted patch fields unchanged", async () => {
@@ -332,7 +406,8 @@ describe("jobs API", () => {
     expect(clearedJob.jobTitle).toBe(createdJob.jobTitle);
     expect(clearedJob.jobDescription).toBe(createdJob.jobDescription);
     expect(clearedJob.jobLocation).toBe(createdJob.jobLocation);
-    expect(clearedJob.status).toEqual(emptyStatus);
+    expect(clearedJob.status).toEqual(currentStatus());
+    expect(clearedJob.analysis).toEqual(stubAnalysis("Build APIs."));
   });
 
   it("orders jobs by createdAt ascending and then id ascending", async () => {
@@ -354,7 +429,7 @@ describe("jobs API", () => {
     const listed = await request(app).get("/jobs").set("Authorization", `Bearer ${owner.token}`);
     const rows = jobRecords(listed.body as JsonObject);
     expect(rows.map((row) => row.id)).toEqual([firstJob.id, secondJob.id].sort());
-    expect(rows.every((row) => JSON.stringify(row.status) === JSON.stringify(emptyStatus))).toBe(
+    expect(rows.every((row) => JSON.stringify(row.status) === JSON.stringify(currentStatus()))).toBe(
       true,
     );
   });
@@ -416,5 +491,148 @@ describe("jobs API", () => {
       }
       await rm(storageDir, { recursive: true, force: true });
     }
+  });
+
+  it("does not call the model when a patch repeats the current description", async () => {
+    const owner = await registerAndLogin();
+    const created = await request(app)
+      .post("/jobs")
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send(sampleJob);
+    const createdJob = jobRecord(created.body as JsonObject);
+    const stored = await prisma.jobAnalysis.findUnique({ where: { jobId: createdJob.id } });
+    const callsBefore = analysisCalls;
+
+    const updated = await request(app)
+      .patch(`/jobs/${createdJob.id}`)
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send({ jobDescription: "Build APIs.", jobTitle: "Staff Engineer" });
+    expect(updated.status).toBe(200);
+    const updatedJob = jobRecord(updated.body as JsonObject);
+    expect(updatedJob.jobTitle).toBe("Staff Engineer");
+    expect(updatedJob.jobDescription).toBe("Build APIs.");
+    expect(updatedJob.analysis).toEqual(stubAnalysis("Build APIs."));
+    expect(updatedJob.status).toEqual(currentStatus());
+    expect(analysisCalls).toBe(callsBefore);
+    expect(await prisma.jobAnalysis.findUnique({ where: { jobId: createdJob.id } })).toEqual(stored);
+  });
+
+  it("returns 502 and stores nothing when the model rejects a create", async () => {
+    const owner = await registerAndLogin();
+    const created = await request(rejectingApp)
+      .post("/jobs")
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send(sampleJob);
+    expect(created.status).toBe(502);
+    expect(created.body).toEqual({ error: "Job analysis failed" });
+    expect(await prisma.job.count({ where: { userId: owner.userId } })).toBe(0);
+    expect(await prisma.jobAnalysis.count({ where: { job: { userId: owner.userId } } })).toBe(0);
+  });
+
+  it("returns 502 and keeps the previous job when a description change is rejected", async () => {
+    const owner = await registerAndLogin();
+    const created = await request(app)
+      .post("/jobs")
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send(sampleJob);
+    const createdJob = jobRecord(created.body as JsonObject);
+    const stored = await prisma.jobAnalysis.findUnique({ where: { jobId: createdJob.id } });
+
+    const updated = await request(rejectingApp)
+      .patch(`/jobs/${createdJob.id}`)
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send({ jobTitle: "Should Roll Back", jobDescription: "Build reliable APIs." });
+    expect(updated.status).toBe(502);
+    expect(updated.body).toEqual({ error: "Job analysis failed" });
+
+    const fetched = await request(app)
+      .get(`/jobs/${createdJob.id}`)
+      .set("Authorization", `Bearer ${owner.token}`);
+    const fetchedJob = jobRecord(fetched.body as JsonObject);
+    expect(fetchedJob.jobTitle).toBe("Engineer");
+    expect(fetchedJob.jobDescription).toBe("Build APIs.");
+    expect(fetchedJob.analysis).toEqual(stubAnalysis("Build APIs."));
+    expect(fetchedJob.status).toEqual(currentStatus());
+    expect(await prisma.jobAnalysis.findUnique({ where: { jobId: createdJob.id } })).toEqual(stored);
+  });
+
+  it("returns 502 and stores nothing when create has no model and no env client", async () => {
+    expect(process.env.GEMINI_API_KEY).toBeUndefined();
+    expect(process.env.JOB_ANALYSIS_MODEL).toBeUndefined();
+    const owner = await registerAndLogin();
+    const created = await request(unresolvedApp)
+      .post("/jobs")
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send(sampleJob);
+    expect(created.status).toBe(502);
+    expect(created.body).toEqual({ error: "Job analysis failed" });
+    expect(await prisma.job.count({ where: { userId: owner.userId } })).toBe(0);
+    expect(await prisma.jobAnalysis.count({ where: { job: { userId: owner.userId } } })).toBe(0);
+  });
+
+  it("keeps a legacy job without analysis until the description changes", async () => {
+    const owner = await registerAndLogin();
+    const inserted = await prisma.job.create({
+      data: {
+        userId: owner.userId,
+        companyName: "Example Co",
+        jobTitle: "Engineer",
+        jobDescription: "Build APIs.",
+        jobLocation: "Remote",
+        jobUrl: "https://example.com/jobs/engineer",
+      },
+    });
+    const callsBefore = analysisCalls;
+
+    const fetched = await request(app)
+      .get(`/jobs/${inserted.id}`)
+      .set("Authorization", `Bearer ${owner.token}`);
+    expect(fetched.status).toBe(200);
+    const fetchedJob = jobRecord(fetched.body as JsonObject);
+    expect(fetchedJob.analysis).toBeNull();
+    expect(fetchedJob.status).toEqual({ analysisCurrent: false, ...inactiveStatus });
+
+    const titled = await request(app)
+      .patch(`/jobs/${inserted.id}`)
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send({ jobTitle: "Senior Engineer" });
+    expect(titled.status).toBe(200);
+    const titledJob = jobRecord(titled.body as JsonObject);
+    expect(titledJob.jobTitle).toBe("Senior Engineer");
+    expect(titledJob.analysis).toBeNull();
+    expect(titledJob.status).toEqual({ analysisCurrent: false, ...inactiveStatus });
+    expect(analysisCalls).toBe(callsBefore);
+
+    const described = await request(app)
+      .patch(`/jobs/${inserted.id}`)
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send({ jobDescription: "Build reliable APIs." });
+    expect(described.status).toBe(200);
+    const describedJob = jobRecord(described.body as JsonObject);
+    expect(describedJob.jobDescription).toBe("Build reliable APIs.");
+    expect(describedJob.analysis).toEqual(stubAnalysis("Build reliable APIs."));
+    expect(describedJob.status).toEqual(currentStatus());
+    expect(await prisma.jobAnalysis.count({ where: { jobId: inserted.id } })).toBe(1);
+  });
+
+  it("reports analysisCurrent false when analyzedDescription differs from the job description", async () => {
+    const owner = await registerAndLogin();
+    const created = await request(app)
+      .post("/jobs")
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send(sampleJob);
+    const createdJob = jobRecord(created.body as JsonObject);
+    await prisma.jobAnalysis.update({
+      where: { jobId: createdJob.id },
+      data: { analyzedDescription: "A different description." },
+    });
+
+    const fetched = await request(app)
+      .get(`/jobs/${createdJob.id}`)
+      .set("Authorization", `Bearer ${owner.token}`);
+    const fetchedJob = jobRecord(fetched.body as JsonObject);
+    expect(fetchedJob.analysis).toEqual(stubAnalysis("Build APIs."));
+    expect(fetchedJob.status).toEqual({ analysisCurrent: false, ...inactiveStatus });
+    expect(fetchedJob.jobDescription).toBe("Build APIs.");
   });
 });

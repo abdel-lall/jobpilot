@@ -1,3 +1,4 @@
+import type { JobAnalysisModel } from "@jobpilot/ai";
 import type { PrismaClient } from "@jobpilot/database";
 import express, { type NextFunction, type Request, type Response } from "express";
 import type { AuthServiceOptions } from "./auth/service.js";
@@ -6,6 +7,10 @@ import { createAuthRouter } from "./routes/auth.js";
 import { createProfileRouter } from "./routes/profile.js";
 import { createResumeRouter } from "./routes/resumes.js";
 import { createJobsRouter } from "./routes/jobs.js";
+
+export type CreateAppOptions = AuthServiceOptions & {
+  jobAnalysisModel?: JobAnalysisModel;
+};
 
 export type { PrismaClient };
 
@@ -26,7 +31,7 @@ function applyCors(request: Request, response: Response, next: NextFunction): vo
   next();
 }
 
-export function createApp(options?: AuthServiceOptions) {
+export function createApp(options?: CreateAppOptions) {
   const app = express();
   app.use(applyCors);
   app.use(express.json());
@@ -34,6 +39,6 @@ export function createApp(options?: AuthServiceOptions) {
   app.use(createAuthRouter(options));
   app.use(createProfileRouter());
   app.use(createResumeRouter());
-  app.use(createJobsRouter());
+  app.use(createJobsRouter(options?.jobAnalysisModel));
   return app;
 }

@@ -7,7 +7,7 @@
   },
   "scripts": {
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm --filter @jobpilot/api test"
+    "test": "pnpm --filter @jobpilot/api test && pnpm --filter @jobpilot/ai test"
   },
   "devDependencies": {
     "typescript": "^5.9.2"

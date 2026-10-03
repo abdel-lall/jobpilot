@@ -21,6 +21,8 @@ services:
     environment:
       PORT: "3000"
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-}
+      JOB_ANALYSIS_MODEL: ${JOB_ANALYSIS_MODEL:-stub}
       DATABASE_URL: postgresql://postgres:jobpilot@postgres:5432/postgres
       JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:5173}

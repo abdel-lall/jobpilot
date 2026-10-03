@@ -49,6 +49,10 @@ function notAvailable(value: false | null): "Not available" {
   return value === false || value === null ? "Not available" : "Not available";
 }
 
+function analysisLabel(current: boolean): "Current" | "Not available" {
+  return current ? "Current" : "Not available";
+}
+
 function fieldControl<T extends FieldValues, TTransformedValues>(
   control: Control<T, unknown, TTransformedValues>,
 ): Control<T> {
@@ -276,7 +280,7 @@ function JobRow({
         </p>
       ) : null}
       <p>
-        Analysis <span data-testid="job-analysis">{notAvailable(job.status.analysisCurrent)}</span>
+        Analysis <span data-testid="job-analysis">{analysisLabel(job.status.analysisCurrent)}</span>
       </p>
       <p>
         Tailored resume{" "}

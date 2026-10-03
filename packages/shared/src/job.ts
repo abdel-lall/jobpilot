@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { jobAnalysisSchema } from "./job-analysis.js";
 
 function trimmedString(min: number, max: number) {
   return z.string().trim().min(min).max(max);
@@ -25,7 +26,7 @@ function hasAtLeastOneField(body: object): boolean {
 
 export const jobStatusSchema = z
   .object({
-    analysisCurrent: z.literal(false),
+    analysisCurrent: z.boolean(),
     tailoredResumePresent: z.literal(false),
     interviewPlanPresent: z.literal(false),
     latestOverallScore: z.null(),
@@ -43,6 +44,7 @@ export const jobSchema = z
     jobLocation: z.string(),
     jobUrl: z.string().nullable(),
     status: jobStatusSchema,
+    analysis: jobAnalysisSchema.nullable(),
     createdAt: timestampSchema,
     updatedAt: timestampSchema,
   })
