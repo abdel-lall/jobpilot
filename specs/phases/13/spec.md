@@ -34,11 +34,11 @@ The roadmap names the grounding rule and the storage rule. It does not name the 
 | --- | --- | --- |
 | `skills` | `name` | trimmed, length 1 through 80 |
 | `experience` | `employer`, `jobTitle`, `startDate`, `endDate`, `accomplishments`, `technologies` | employer and job title trimmed, length 1 through 200. Accomplishments: 0 through 20 items, each trimmed, length 1 through 500. Technologies: 0 through 30 items, each trimmed, length 1 through 80 |
-| `projects` | `name`, `description`, `url`, `startDate`, `endDate`, `accomplishments`, `technologies` | name trimmed, length 1 through 200. Description trimmed, length 1 through 2000. `url` is an `http` or `https` URL of length 1 through 500, or `null` |
+| `projects` | `name`, `description`, `url`, `startDate`, `endDate`, `accomplishments`, `technologies` | name trimmed, length 1 through 200. Description trimmed, length 1 through 2000. `url` is an `http` or `https` URL of length 1 through 500, or `null`. `startDate` and `endDate` are each a calendar date or `null` |
 | `education` | `institution`, `degree`, `fieldOfStudy`, `startDate`, `endDate` | each text field trimmed, length 1 through 200 |
 | `certifications` | `name`, `issuer`, `issuedOn`, `expiresOn` | name and issuer trimmed, length 1 through 200 |
 
-Dates use the Phase 5 calendar-date schema. `endDate` and `expiresOn` are nullable. A missing field, an unknown key, an empty trimmed string, or an array over its limit makes the whole document invalid.
+Dates use the Phase 5 calendar-date schema. Experience `endDate`, education `endDate`, and certification `expiresOn` are nullable. Project `startDate` and project `endDate` are each a calendar date or `null`, matching a Phase 5 project. Experience `startDate`, education `startDate`, and certification `issuedOn` are required calendar dates. A missing field, an unknown key, an empty trimmed string, or an array over its limit makes the whole document invalid.
 
 An empty document, with all five arrays empty, is valid. It cites nothing and adds nothing.
 
@@ -189,7 +189,7 @@ The prefix through the line `MCP tool results:` is the initial prompt. It contai
 | `{ "education": [...] }` | `sourceId` plus `institution`, `degree`, `fieldOfStudy`, `startDate`, `endDate` |
 | `{ "certifications": [...] }` | `sourceId` plus `name`, `issuer`, `issuedOn`, `expiresOn` |
 
-Section records are the Phase 11 public objects: fact fields, `id`, `createdAt`, and `updatedAt`, without `userId`. The stub ignores timestamps. A missing key, a non-array section, or invalid JSON throws. The copied document must satisfy `tailoredResumeSchema`.
+Section records are the Phase 11 public objects: fact fields, `id`, `createdAt`, and `updatedAt`, without `userId`. The stub ignores timestamps. A project `startDate` or `endDate` of `null` is copied as `null`. A missing key, a non-array section, or invalid JSON throws. The copied document must satisfy `tailoredResumeSchema`.
 
 ### MCP client
 
@@ -238,7 +238,7 @@ These fields must equal the cited record with `===`:
 
 - Skill: `name`.
 - Experience: `employer`, `jobTitle`, `startDate`, `endDate`.
-- Project: `name`, `url`, `startDate`, `endDate`.
+- Project: `name`, `url`, `startDate`, `endDate`. `null` equals `null`. Changing a null project date to a calendar date, or a calendar date to `null`, is rejected.
 - Education: `institution`, `degree`, `fieldOfStudy`, `startDate`, `endDate`.
 - Certification: `name`, `issuer`, `issuedOn`, `expiresOn`.
 
@@ -342,6 +342,7 @@ These constraints come from Phase 13, the roadmap rules that bind every phase, a
 - Assert a model value of `{ "extra": true }` causes `tailorResume` to reject.
 - Assert `assertTailoredResumeGrounded` rejects an unknown source id, another section's id, and each unsupported claim in the table above.
 - Assert an exact copy is accepted, and assert `Led the API migration for reliability` is accepted when `reliability` is an analysis keyword.
+- Assert a project whose cited record has `startDate: null` is accepted when the resume item also has `startDate: null`, and rejected when that field is a different calendar date.
 - The Gemini factory is not called in this test.
 
 ### API tests

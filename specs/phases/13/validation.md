@@ -11,6 +11,7 @@ Not started.
 - A result with an unknown source id, a wrong-type source id, or another user's source id is rejected and leaves the previous resume unchanged.
 - A result that cites real records but adds a numeric metric, technology, employer, job title, date, or accomplishment absent from those records is rejected and leaves the previous resume unchanged.
 - A result whose claims stay within the cited records, including a rewritten bullet that only adds an analysis keyword, is saved.
+- A project item accepts `startDate` and `endDate` as a calendar date or `null`. Grounding still requires both fields to equal the cited project record, including `null`.
 - The workflow has no profile data until a tool returns it. The prompt prefix through `MCP tool results:` has no profile dump.
 - `search_candidate_experience` is called for retrieval. `get_candidate_profile` and `get_project_details` are not called.
 - A description change leaves the job without a current resume until generation runs again. A failed analysis leaves the previous resume in place.
@@ -23,7 +24,7 @@ Not started.
 ## Required automated tests
 
 - Vitest in `packages/ai`: stubbed model and MCP client prove search is used before the model, the search query and the prompt prefix omit `Secret Employer`, and that string appears in the full prompt only as tool text. `get_candidate_profile` is not called. An invalid model object rejects. `GEMINI_API_KEY` is unset. No network call. This test is part of root `pnpm test`.
-- Vitest in `packages/ai`: `assertTailoredResumeGrounded` rejects an unknown source id and a source id from the wrong section. It rejects an unsupported numeric metric, technology, employer, job title, date, and accomplishment. An exact copy is accepted. `Led the API migration for reliability` is accepted when `reliability` is an analysis keyword.
+- Vitest in `packages/ai`: `assertTailoredResumeGrounded` rejects an unknown source id and a source id from the wrong section. It rejects an unsupported numeric metric, technology, employer, job title, date, and accomplishment. An exact copy is accepted. `Led the API migration for reliability` is accepted when `reliability` is an analysis keyword. A project whose cited record has `startDate: null` is accepted when the resume item also has `startDate: null`, and rejected when that field is a different calendar date.
 - Supertest, executed by `pnpm --filter @jobpilot/api test:tailored-resume` against the Compose database. The app uses `createStubResumeModel()` and an injected tool client. `GEMINI_API_KEY`, `RESUME_MODEL`, `MCP_URL`, and `MCP_SHARED_SECRET` are unset. Generate stores one document and `tailoredResumePresent` becomes `true`. A second generate replaces that row. Unknown, wrong-type, and cross-user source ids return `502` and `{ "error": "Resume generation failed" }` without replacing the stored document. An added `Kubernetes` technology does the same. The other user receives `404` on generate and read. Missing or stale analysis returns `409` and does not call the tool client. A description change clears the resume. A failed analysis keeps it. A title-only patch keeps it. Job delete removes it. The recorded prompt omits the uploaded file name and `storagePath`.
 - The same API test file asserts `createResumeToolClient` sends `x-jobpilot-mcp-secret` and `x-jobpilot-user-id`, and that the user id is not in the request body.
 - `pnpm --filter @jobpilot/api test:auth` passes.
@@ -78,6 +79,7 @@ Run these from the repository root during validation. Set `DATABASE_URL` and `JW
 - [ ] Unknown, wrong-type, and other-user source ids are rejected and do not replace the stored resume.
 - [ ] An unsupported numeric metric, technology, employer, job title, date, or accomplishment is rejected and does not replace the stored resume.
 - [ ] A grounded resume, including a bullet that only adds an analysis keyword, is saved.
+- [ ] A project `startDate` or `endDate` may be a calendar date or `null`, and grounding still requires exact equality with the cited project.
 - [ ] The initial prompt has no profile data. Search runs before the model.
 - [ ] `get_candidate_profile` is not called. Only resume tailoring calls MCP.
 - [ ] A description change clears the resume. A failed analysis does not.
