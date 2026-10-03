@@ -131,7 +131,7 @@ async function expectProfileView(page: Page): Promise<void> {
 }
 
 async function expectStatuses(page: Page): Promise<void> {
-  await expect(page.getByTestId("job-analysis")).toHaveText("Not available");
+  await expect(page.getByTestId("job-analysis")).toHaveText("Current");
   await expect(page.getByTestId("job-tailored-resume")).toHaveText("Not available");
   await expect(page.getByTestId("job-interview-plan")).toHaveText("Not available");
   await expect(page.getByTestId("job-score")).toHaveText("Not available");
@@ -244,6 +244,15 @@ test("creates, reloads, edits, clears the URL, and deletes a job", async ({ page
   await editTitle.getByRole("button", { name: "Save job", exact: true }).click();
   await expect(row.getByTestId("job-title")).toHaveText("Senior Engineer");
   await expect(row.getByTestId("job-company")).toHaveText("Example Co");
+  await expectStatuses(page);
+
+  await page.getByRole("button", { name: "Edit job", exact: true }).click();
+  const editDescription = page.getByRole("form", { name: "Edit job" });
+  await editDescription.getByLabel("Job description").fill("Build reliable APIs.");
+  await editDescription.getByRole("button", { name: "Save job", exact: true }).click();
+  await expect(row.getByTestId("job-description")).toHaveText("Build reliable APIs.");
+  await expect(row.getByTestId("job-title")).toHaveText("Senior Engineer");
+  await expectStatuses(page);
 
   const clearRequest = page.waitForRequest(
     (request) => request.method() === "PATCH" && request.url().includes("/jobs/"),

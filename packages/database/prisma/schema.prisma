@@ -131,6 +131,23 @@ model Job {
   jobUrl         String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  analysis       JobAnalysis?
 
   @@index([userId])
+}
+
+model JobAnalysis {
+  id                     String   @id @default(uuid())
+  jobId                  String   @unique
+  job                    Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  analyzedDescription    String
+  requiredSkills         Json
+  preferredSkills        Json
+  responsibilities       Json
+  experienceRequirements Json
+  technologies           Json
+  interviewTopics        Json
+  keywords               Json
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 }

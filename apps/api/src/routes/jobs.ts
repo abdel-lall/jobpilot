@@ -1,6 +1,8 @@
+import type { JobAnalysisModel } from "@jobpilot/ai";
 import { createJobBodySchema, updateJobBodySchema } from "@jobpilot/shared";
 import { Router, type Request, type Response } from "express";
 import { AuthError } from "../auth/errors.js";
+import { getAuthenticatedUser } from "../auth/service.js";
 import { JobError } from "../jobs/errors.js";
 import { createJob, deleteJob, getJob, listJobs, updateJob } from "../jobs/service.js";
 
@@ -11,6 +13,10 @@ function sendJobError(response: Response, error: unknown): void {
   }
   if (error instanceof JobError && error.code === "not_found") {
     response.status(404).json({ error: "Not found" });
+    return;
+  }
+  if (error instanceof JobError && error.code === "analysis_failed") {
+    response.status(502).json({ error: "Job analysis failed" });
     return;
   }
   response.status(500).json({ error: "Internal server error" });
@@ -42,7 +48,17 @@ function pathId(request: Request): string {
   return typeof id === "string" ? id : "";
 }
 
-export function createJobsRouter(): Router {
+async function requireUserId(request: Request, response: Response): Promise<string | undefined> {
+  try {
+    const user = await getAuthenticatedUser(request.header("authorization"));
+    return user.id;
+  } catch (error) {
+    sendJobError(response, error);
+    return undefined;
+  }
+}
+
+export function createJobsRouter(jobAnalysisModel?: JobAnalysisModel): Router {
   const router = Router();
 
   router.post("/jobs", async (request, response) => {
@@ -51,19 +67,31 @@ export function createJobsRouter(): Router {
       rejectInvalidBody(response);
       return;
     }
+    const userId = await requireUserId(request, response);
+    if (userId === undefined) {
+      return;
+    }
     await respond(response, 201, async () => ({
-      job: await createJob(request.header("authorization"), parsed.data),
+      job: await createJob(userId, parsed.data, jobAnalysisModel),
     }));
   });
 
   router.get("/jobs", async (request, response) => {
-    await respond(response, 200, () => listJobs(request.header("authorization")));
+    const userId = await requireUserId(request, response);
+    if (userId === undefined) {
+      return;
+    }
+    await respond(response, 200, () => listJobs(userId));
   });
 
   router.get("/jobs/:id", async (request, response) => {
+    const userId = await requireUserId(request, response);
+    if (userId === undefined) {
+      return;
+    }
     const id = pathId(request);
     await respond(response, 200, async () => ({
-      job: await getJob(request.header("authorization"), id),
+      job: await getJob(userId, id),
     }));
   });
 
@@ -73,15 +101,23 @@ export function createJobsRouter(): Router {
       rejectInvalidBody(response);
       return;
     }
+    const userId = await requireUserId(request, response);
+    if (userId === undefined) {
+      return;
+    }
     const id = pathId(request);
     await respond(response, 200, async () => ({
-      job: await updateJob(request.header("authorization"), id, parsed.data),
+      job: await updateJob(userId, id, parsed.data, jobAnalysisModel),
     }));
   });
 
   router.delete("/jobs/:id", async (request, response) => {
+    const userId = await requireUserId(request, response);
+    if (userId === undefined) {
+      return;
+    }
     const id = pathId(request);
-    await respond(response, 204, () => deleteJob(request.header("authorization"), id));
+    await respond(response, 204, () => deleteJob(userId, id));
   });
 
   return router;

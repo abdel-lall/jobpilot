@@ -12,6 +12,7 @@
     "test:jobs": "vitest run --config vitest.jobs.config.ts"
   },
   "dependencies": {
+    "@jobpilot/ai": "workspace:*",
     "@jobpilot/database": "workspace:*",
     "@jobpilot/shared": "workspace:*",
     "@prisma/adapter-pg": "7.10.0",

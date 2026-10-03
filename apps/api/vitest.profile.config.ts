@@ -9,6 +9,7 @@ export default defineConfig({
     alias: {
       "@jobpilot/shared": path.resolve(rootDir, "../../packages/shared/src/index.ts"),
       "@jobpilot/database": path.resolve(rootDir, "../../packages/database/src/index.ts"),
+      "@jobpilot/ai": path.resolve(rootDir, "../../packages/ai/src/index.ts"),
     },
   },
   test: {
