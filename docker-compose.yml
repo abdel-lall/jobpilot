@@ -32,6 +32,19 @@ services:
     depends_on:
       - postgres
 
+  portfolio-mcp:
+    build:
+      context: .
+      dockerfile: apps/portfolio-mcp/Dockerfile
+    ports:
+      - "3010:3010"
+    environment:
+      MCP_PORT: "3010"
+      DATABASE_URL: postgresql://postgres:jobpilot@postgres:5432/postgres
+      MCP_SHARED_SECRET: ${MCP_SHARED_SECRET:-dev-only-change-me}
+    depends_on:
+      - postgres
+
   web:
     build:
       context: .

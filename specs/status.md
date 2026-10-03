@@ -2,7 +2,7 @@
 
 ## Repository
 
-Phase 10 is complete on branch `phase/10-job-analysis`. Phase 11 is next.
+Phase 11 is complete on branch `phase/11-mcp-exact-tools`. Phase 12 is next.
 
 ## Phases
 
@@ -16,8 +16,8 @@ Phase 10 is complete on branch `phase/10-job-analysis`. Phase 11 is next.
 - 08 — Jobs API — Complete
 - 09 — Jobs UI and dashboard shell — Complete
 - 10 — Job analysis — Complete
-- 11 — MCP exact tools — Next
-- 12 — Embeddings and candidate search — Not started
+- 11 — MCP exact tools — Complete
+- 12 — Embeddings and candidate search — Next
 - 13 — Tailored resume workflow — Not started
 - 14 — Tailored resume UI — Not started
 - 15 — Interview plan — Not started
