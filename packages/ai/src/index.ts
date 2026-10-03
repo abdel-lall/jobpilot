@@ -7,3 +7,11 @@ export {
   type JobAnalysisModel,
   type JobAnalysisModelInput,
 } from "./job-analysis.js";
+export {
+  assertUsableEmbedding,
+  createGeminiEmbeddingClient,
+  createStubEmbeddingClient,
+  selectEmbeddingClient,
+  type EmbeddingClient,
+  type EmbeddingClientSelection,
+} from "./embedding.js";

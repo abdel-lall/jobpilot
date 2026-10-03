@@ -1,4 +1,4 @@
-import type { JobAnalysisModel } from "@jobpilot/ai";
+import type { EmbeddingClient, JobAnalysisModel } from "@jobpilot/ai";
 import type { PrismaClient } from "@jobpilot/database";
 import express, { type NextFunction, type Request, type Response } from "express";
 import type { AuthServiceOptions } from "./auth/service.js";
@@ -10,6 +10,7 @@ import { createJobsRouter } from "./routes/jobs.js";
 
 export type CreateAppOptions = AuthServiceOptions & {
   jobAnalysisModel?: JobAnalysisModel;
+  embeddingClient?: EmbeddingClient;
 };
 
 export type { PrismaClient };
@@ -37,7 +38,7 @@ export function createApp(options?: CreateAppOptions) {
   app.use(express.json());
   app.use(healthRouter);
   app.use(createAuthRouter(options));
-  app.use(createProfileRouter());
+  app.use(createProfileRouter(options?.embeddingClient));
   app.use(createResumeRouter());
   app.use(createJobsRouter(options?.jobAnalysisModel));
   return app;

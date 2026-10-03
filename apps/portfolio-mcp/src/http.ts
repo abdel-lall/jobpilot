@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import type { EmbeddingClient } from "@jobpilot/ai";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createMcpServer } from "./mcp.js";
 import { isLowercaseUuid } from "./uuid.js";
@@ -49,7 +50,11 @@ function sendJson(req: IncomingMessage, res: ServerResponse, status: number, bod
   res.end(payload);
 }
 
-async function handlePost(req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function handlePost(
+  req: IncomingMessage,
+  res: ServerResponse,
+  embeddingClient: EmbeddingClient | undefined,
+): Promise<void> {
   const secret = singleHeader(req.headers["x-jobpilot-mcp-secret"]);
   const userId = singleHeader(req.headers["x-jobpilot-user-id"]);
   if (!sharedSecretMatches(secret) || userId === undefined || !isLowercaseUuid(userId)) {
@@ -57,7 +62,7 @@ async function handlePost(req: IncomingMessage, res: ServerResponse): Promise<vo
     return;
   }
 
-  const mcp = createMcpServer(userId);
+  const mcp = createMcpServer(userId, embeddingClient);
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
@@ -70,7 +75,11 @@ async function handlePost(req: IncomingMessage, res: ServerResponse): Promise<vo
   await transport.handleRequest(req, res);
 }
 
-async function routeHttpRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function routeHttpRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  embeddingClient: EmbeddingClient | undefined,
+): Promise<void> {
   const pathname = pathnameOf(req);
   if (pathname !== "/mcp") {
     sendJson(req, res, 404, { error: "Not found" });
@@ -80,12 +89,16 @@ async function routeHttpRequest(req: IncomingMessage, res: ServerResponse): Prom
     sendJson(req, res, 405, { error: "Method not allowed" });
     return;
   }
-  await handlePost(req, res);
+  await handlePost(req, res, embeddingClient);
 }
 
-export function startHttpServer(port: number, host: string): Promise<ListeningServer> {
+export function startHttpServer(
+  port: number,
+  host: string,
+  embeddingClient?: EmbeddingClient,
+): Promise<ListeningServer> {
   const server = createServer((req, res) => {
-    void routeHttpRequest(req, res).catch(() => {
+    void routeHttpRequest(req, res, embeddingClient).catch(() => {
       if (!res.headersSent) {
         sendJson(req, res, 500, { error: "Internal server error" });
       }

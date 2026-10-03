@@ -7,6 +7,7 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   resolve: {
     alias: {
+      "@jobpilot/ai": path.resolve(rootDir, "../../packages/ai/src/index.ts"),
       "@jobpilot/shared": path.resolve(rootDir, "../../packages/shared/src/index.ts"),
       "@jobpilot/database": path.resolve(rootDir, "../../packages/database/src/index.ts"),
     },

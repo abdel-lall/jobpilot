@@ -1,4 +1,4 @@
-export type ProfileErrorCode = "not_found" | "invalid_input";
+export type ProfileErrorCode = "not_found" | "invalid_input" | "embedding_failed";
 
 export class ProfileError extends Error {
   readonly code: ProfileErrorCode;

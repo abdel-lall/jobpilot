@@ -1,3 +1,8 @@
+import {
+  assertUsableEmbedding,
+  selectEmbeddingClient,
+  type EmbeddingClient,
+} from "@jobpilot/ai";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
@@ -8,6 +13,7 @@ import {
   listProjects,
   listSkills,
 } from "./profile.js";
+import { searchCandidateExperience } from "./search.js";
 import { isLowercaseUuid } from "./uuid.js";
 
 const emptyInputSchema = z.object({}).strip();
@@ -16,6 +22,37 @@ const projectDetailsInputSchema = z
     projectId: z.unknown().optional(),
   })
   .strip();
+const searchInputSchema = z
+  .object({
+    query: z.unknown().optional(),
+  })
+  .strip();
+
+function searchQuery(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (trimmed.length < 1 || trimmed.length > 2000) {
+    return undefined;
+  }
+  return trimmed;
+}
+
+function resolveSearchClient(embeddingClient: EmbeddingClient | undefined): EmbeddingClient {
+  if (embeddingClient !== undefined) {
+    return embeddingClient;
+  }
+  const client = selectEmbeddingClient({
+    embeddingModel: process.env.EMBEDDING_MODEL,
+    apiKey: process.env.GEMINI_API_KEY,
+    modelName: process.env.GEMINI_EMBEDDING_MODEL,
+  });
+  if (client === undefined) {
+    throw new Error("Search failed");
+  }
+  return client;
+}
 
 function jsonResult(value: unknown) {
   return {
@@ -31,7 +68,7 @@ function toolError(text: "Invalid input" | "Not found") {
   };
 }
 
-export function createMcpServer(userId: string): McpServer {
+export function createMcpServer(userId: string, embeddingClient?: EmbeddingClient): McpServer {
   const server = new McpServer({ name: "jobpilot-portfolio", version: "1.0.0" });
 
   server.registerTool(
@@ -111,6 +148,31 @@ export function createMcpServer(userId: string): McpServer {
       inputSchema: emptyInputSchema,
     },
     async () => jsonResult({ certifications: await listCertifications(userId) }),
+  );
+
+  server.registerTool(
+    "search_candidate_experience",
+    {
+      description: "Return matching work experience and projects.",
+      inputSchema: searchInputSchema,
+    },
+    async (args) => {
+      const query = searchQuery(args.query);
+      if (query === undefined) {
+        return toolError("Invalid input");
+      }
+      try {
+        const client = resolveSearchClient(embeddingClient);
+        const vector = assertUsableEmbedding(await client.embedQuery(query));
+        const matches = await searchCandidateExperience(userId, vector);
+        return jsonResult({ matches });
+      } catch {
+        return {
+          content: [{ type: "text" as const, text: "Search failed" }],
+          isError: true as const,
+        };
+      }
+    },
   );
 
   return server;

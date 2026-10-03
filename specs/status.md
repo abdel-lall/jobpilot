@@ -2,7 +2,7 @@
 
 ## Repository
 
-Phase 11 is complete on branch `phase/11-mcp-exact-tools`. Phase 12 is next.
+Phase 12 is complete on branch `phase/12-embeddings-search`. Phase 13 is next.
 
 ## Phases
 
@@ -17,8 +17,8 @@ Phase 11 is complete on branch `phase/11-mcp-exact-tools`. Phase 12 is next.
 - 09 — Jobs UI and dashboard shell — Complete
 - 10 — Job analysis — Complete
 - 11 — MCP exact tools — Complete
-- 12 — Embeddings and candidate search — Next
-- 13 — Tailored resume workflow — Not started
+- 12 — Embeddings and candidate search — Complete
+- 13 — Tailored resume workflow — Next
 - 14 — Tailored resume UI — Not started
 - 15 — Interview plan — Not started
 - 16 — Interview question generation — Not started
