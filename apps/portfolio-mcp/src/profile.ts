@@ -70,70 +70,97 @@ export async function listEducation(userId: string) {
   );
 }
 
+const experienceSelect = {
+  id: true,
+  employer: true,
+  jobTitle: true,
+  startDate: true,
+  endDate: true,
+  accomplishments: true,
+  technologies: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
+const projectSelect = {
+  id: true,
+  name: true,
+  description: true,
+  url: true,
+  startDate: true,
+  endDate: true,
+  accomplishments: true,
+  technologies: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
+function toPublicExperience(row: {
+  id: string;
+  employer: string;
+  jobTitle: string;
+  startDate: Date;
+  endDate: Date | null;
+  accomplishments: string[];
+  technologies: string[];
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return publicWorkExperienceSchema.parse({
+    ...toTimestamps(row),
+    employer: row.employer,
+    jobTitle: row.jobTitle,
+    startDate: formatCalendarDate(row.startDate),
+    endDate: formatCalendarDateOrNull(row.endDate),
+    accomplishments: row.accomplishments,
+    technologies: row.technologies,
+  });
+}
+
 export async function listExperience(userId: string) {
   const rows = await getPrisma().workExperience.findMany({
     where: { userId },
     orderBy: listOrder,
-    select: {
-      id: true,
-      employer: true,
-      jobTitle: true,
-      startDate: true,
-      endDate: true,
-      accomplishments: true,
-      technologies: true,
-      createdAt: true,
-      updatedAt: true,
-    },
+    select: experienceSelect,
   });
-  return rows.map((row) =>
-    publicWorkExperienceSchema.parse({
-      ...toTimestamps(row),
-      employer: row.employer,
-      jobTitle: row.jobTitle,
-      startDate: formatCalendarDate(row.startDate),
-      endDate: formatCalendarDateOrNull(row.endDate),
-      accomplishments: row.accomplishments,
-      technologies: row.technologies,
-    }),
-  );
+  return rows.map((row) => toPublicExperience(row));
+}
+
+export async function publicExperienceByIds(userId: string, ids: string[]) {
+  if (ids.length === 0) {
+    return new Map<string, ReturnType<typeof toPublicExperience>>();
+  }
+  const rows = await getPrisma().workExperience.findMany({
+    where: { userId, id: { in: ids } },
+    select: experienceSelect,
+  });
+  return new Map(rows.map((row) => [row.id, toPublicExperience(row)]));
 }
 
 export async function listProjects(userId: string) {
   const rows = await getPrisma().project.findMany({
     where: { userId },
     orderBy: listOrder,
-    select: {
-      id: true,
-      name: true,
-      description: true,
-      url: true,
-      startDate: true,
-      endDate: true,
-      accomplishments: true,
-      technologies: true,
-      createdAt: true,
-      updatedAt: true,
-    },
+    select: projectSelect,
   });
   return rows.map((row) => publicProjectSchema.parse(toProjectJson(row)));
+}
+
+export async function publicProjectByIds(userId: string, ids: string[]) {
+  if (ids.length === 0) {
+    return new Map<string, ReturnType<typeof toProjectJson>>();
+  }
+  const rows = await getPrisma().project.findMany({
+    where: { userId, id: { in: ids } },
+    select: projectSelect,
+  });
+  return new Map(rows.map((row) => [row.id, publicProjectSchema.parse(toProjectJson(row))]));
 }
 
 export async function getProject(userId: string, projectId: string) {
   const row = await getPrisma().project.findFirst({
     where: { id: projectId, userId },
-    select: {
-      id: true,
-      name: true,
-      description: true,
-      url: true,
-      startDate: true,
-      endDate: true,
-      accomplishments: true,
-      technologies: true,
-      createdAt: true,
-      updatedAt: true,
-    },
+    select: projectSelect,
   });
   if (row === null) {
     return null;

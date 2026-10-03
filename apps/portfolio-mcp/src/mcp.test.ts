@@ -1,10 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
+import type { EmbeddingClient } from "@jobpilot/ai";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { PrismaClient } from "@jobpilot/database";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { startHttpServer, type ListeningServer } from "./http.js";
+
+delete process.env.GEMINI_API_KEY;
+delete process.env.GEMINI_EMBEDDING_MODEL;
+delete process.env.EMBEDDING_MODEL;
 
 const databaseUrl = process.env.DATABASE_URL;
 const sharedSecret = process.env.MCP_SHARED_SECRET;
@@ -29,6 +34,7 @@ const toolNames = [
   "get_project_details",
   "get_education",
   "get_certifications",
+  "search_candidate_experience",
 ];
 
 type ToolResult = Awaited<ReturnType<Client["callTool"]>>;
@@ -294,7 +300,9 @@ describe("portfolio mcp", () => {
     try {
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).sort()).toEqual([...toolNames].sort());
-      expect(listed.tools.map((tool) => tool.name)).not.toContain("search_candidate_experience");
+      const searchTool = listed.tools.find((tool) => tool.name === "search_candidate_experience");
+      expect(searchTool).toBeDefined();
+      expect(Object.keys(searchTool?.inputSchema.properties ?? {}).sort()).toEqual(["query"]);
       for (const tool of listed.tools) {
         const properties = tool.inputSchema.properties ?? {};
         expect(properties).not.toHaveProperty("userId");
@@ -480,4 +488,321 @@ describe("portfolio mcp", () => {
     expect(otherPath.status).toBe(404);
     expect(await otherPath.json()).toEqual({ error: "Not found" });
   });
+
+  it("ranks the context user's experience and projects together and ignores another user", async () => {
+    const alpha = await prisma.user.create({
+      data: {
+        email: `phase12-alpha-${randomUUID()}@example.com`,
+        passwordHash: "phase12-password-hash-alpha",
+      },
+    });
+    const beta = await prisma.user.create({
+      data: {
+        email: `phase12-beta-${randomUUID()}@example.com`,
+        passwordHash: "phase12-password-hash-beta",
+      },
+    });
+    userIds.push(alpha.id, beta.id);
+    const nearer = await prisma.workExperience.create({
+      data: {
+        userId: alpha.id,
+        employer: "alpha-near-employer",
+        jobTitle: "alpha-near-title",
+        startDate: new Date("2021-03-04T00:00:00.000Z"),
+        endDate: new Date("2022-04-05T00:00:00.000Z"),
+        accomplishments: ["alpha-near-accomplishment"],
+        technologies: ["alpha-near-tech"],
+        createdAt: new Date("2024-01-01T00:00:00.000Z"),
+      },
+    });
+    const farther = await prisma.project.create({
+      data: {
+        userId: alpha.id,
+        name: "alpha-far-project",
+        description: "alpha-far-description",
+        url: null,
+        startDate: null,
+        endDate: null,
+        accomplishments: [],
+        technologies: [],
+        createdAt: new Date("2024-01-02T00:00:00.000Z"),
+      },
+    });
+    const other = await prisma.workExperience.create({
+      data: {
+        userId: beta.id,
+        employer: "beta-nearer-employer",
+        jobTitle: "beta-nearer-title",
+        startDate: new Date("2016-01-01T00:00:00.000Z"),
+        endDate: null,
+        accomplishments: ["beta-nearer-accomplishment"],
+        technologies: ["beta-nearer-tech"],
+        createdAt: new Date("2023-01-01T00:00:00.000Z"),
+      },
+    });
+    await setEmbedding("WorkExperience", nearer.id, angled(0.4));
+    await setEmbedding("Project", farther.id, angled(1.2));
+    await setEmbedding("WorkExperience", other.id, angled(0));
+
+    const searchServer = await startHttpServer(0, "127.0.0.1", queryClient(angled(0)));
+    const client = await connectClient(searchServer.port, alpha.id);
+    try {
+      const expected = {
+        matches: [
+          {
+            kind: "experience",
+            experience: {
+              ...timestamps(nearer),
+              employer: nearer.employer,
+              jobTitle: nearer.jobTitle,
+              startDate: formatCalendarDate(nearer.startDate),
+              endDate: formatCalendarDateOrNull(nearer.endDate),
+              accomplishments: nearer.accomplishments,
+              technologies: nearer.technologies,
+            },
+          },
+          {
+            kind: "project",
+            project: {
+              ...timestamps(farther),
+              name: farther.name,
+              description: farther.description,
+              url: farther.url,
+              startDate: formatCalendarDateOrNull(farther.startDate),
+              endDate: formatCalendarDateOrNull(farther.endDate),
+              accomplishments: farther.accomplishments,
+              technologies: farther.technologies,
+            },
+          },
+        ],
+      };
+      const result = toolText(
+        await client.callTool({
+          name: "search_candidate_experience",
+          arguments: { query: "billing systems" },
+        }),
+      );
+      expect(result.isError).toBe(false);
+      expect(JSON.parse(result.text)).toEqual(expected);
+      expect(result.text).not.toContain("beta-nearer-employer");
+
+      const overridden = toolText(
+        await client.callTool({
+          name: "search_candidate_experience",
+          arguments: { query: "billing systems", userId: beta.id },
+        }),
+      );
+      expect(overridden.isError).toBe(false);
+      expect(JSON.parse(overridden.text)).toEqual(expected);
+      expect(overridden.text).not.toContain("beta-nearer-employer");
+    } finally {
+      await client.close();
+      await searchServer.close();
+    }
+  });
+
+  it("keeps eight combined matches and omits null embeddings", async () => {
+    const owner = await prisma.user.create({
+      data: {
+        email: `phase12-limit-${randomUUID()}@example.com`,
+        passwordHash: "phase12-password-hash-limit",
+      },
+    });
+    userIds.push(owner.id);
+    const createdAt = new Date("2024-01-01T00:00:00.000Z");
+    const ranked: Array<{ kind: "experience" | "project"; token: string; id: string }> = [];
+    for (let index = 0; index < 12; index += 1) {
+      const token = `limit-rank-${String(index).padStart(2, "0")}`;
+      if (index % 2 === 0) {
+        const row = await prisma.workExperience.create({
+          data: {
+            userId: owner.id,
+            employer: token,
+            jobTitle: "Engineer",
+            startDate: new Date("2020-01-01T00:00:00.000Z"),
+            endDate: null,
+            accomplishments: [token],
+            technologies: [],
+            createdAt,
+          },
+        });
+        await setEmbedding("WorkExperience", row.id, angled(0.05 * (index + 1)));
+        ranked.push({ kind: "experience", token, id: row.id });
+      } else {
+        const row = await prisma.project.create({
+          data: {
+            userId: owner.id,
+            name: token,
+            description: token,
+            url: null,
+            startDate: null,
+            endDate: null,
+            accomplishments: [],
+            technologies: [],
+            createdAt,
+          },
+        });
+        await setEmbedding("Project", row.id, angled(0.05 * (index + 1)));
+        ranked.push({ kind: "project", token, id: row.id });
+      }
+    }
+    const absent = await prisma.workExperience.create({
+      data: {
+        userId: owner.id,
+        employer: "limit-null-employer",
+        jobTitle: "Engineer",
+        startDate: new Date("2020-01-01T00:00:00.000Z"),
+        endDate: null,
+        accomplishments: ["limit-null-accomplishment"],
+        technologies: [],
+        createdAt,
+      },
+    });
+
+    const searchServer = await startHttpServer(0, "127.0.0.1", queryClient(angled(0)));
+    const client = await connectClient(searchServer.port, owner.id);
+    try {
+      const result = toolText(
+        await client.callTool({
+          name: "search_candidate_experience",
+          arguments: { query: "nearest work" },
+        }),
+      );
+      expect(result.isError).toBe(false);
+      const body = JSON.parse(result.text) as {
+        matches: Array<{ kind: string; experience?: { employer: string }; project?: { name: string } }>;
+      };
+      expect(body.matches).toHaveLength(8);
+      expect(body.matches.map((match) => match.kind)).toEqual([
+        "experience",
+        "project",
+        "experience",
+        "project",
+        "experience",
+        "project",
+        "experience",
+        "project",
+      ]);
+      expect(body.matches[0]?.experience?.employer).toBe("limit-rank-00");
+      expect(body.matches[7]?.project?.name).toBe("limit-rank-07");
+      expect(result.text).not.toContain("limit-rank-08");
+      expect(result.text).not.toContain("limit-null-employer");
+      expect(result.text).not.toContain(absent.id);
+      expect(ranked.slice(0, 8).map((row) => row.token)).toEqual([
+        "limit-rank-00",
+        "limit-rank-01",
+        "limit-rank-02",
+        "limit-rank-03",
+        "limit-rank-04",
+        "limit-rank-05",
+        "limit-rank-06",
+        "limit-rank-07",
+      ]);
+    } finally {
+      await client.close();
+      await searchServer.close();
+    }
+  });
+
+  it("rejects an invalid query without embedding and reports search failure", async () => {
+    let calls = 0;
+    const clientImpl: EmbeddingClient = {
+      async embedDocument() {
+        calls += 1;
+        return angled(0);
+      },
+      async embedQuery(text) {
+        calls += 1;
+        if (text === "reject-provider") {
+          throw new Error("provider token sk-live");
+        }
+        if (text === "short-vector") {
+          return [1, 2, 3];
+        }
+        if (text === "zero-vector") {
+          return new Array<number>(768).fill(0);
+        }
+        return angled(0);
+      },
+    };
+    const searchServer = await startHttpServer(0, "127.0.0.1", clientImpl);
+    const owner = await prisma.user.create({
+      data: {
+        email: `phase12-invalid-${randomUUID()}@example.com`,
+        passwordHash: "phase12-password-hash-invalid",
+      },
+    });
+    userIds.push(owner.id);
+    const client = await connectClient(searchServer.port, owner.id);
+    try {
+      for (const query of [undefined, 12, "   ", "a".repeat(2001)]) {
+        const result = toolText(
+          await client.callTool({
+            name: "search_candidate_experience",
+            arguments: query === undefined ? {} : { query },
+          }),
+        );
+        expect(result).toEqual({ text: "Invalid input", isError: true });
+      }
+      expect(calls).toBe(0);
+
+      for (const query of ["reject-provider", "short-vector", "zero-vector"]) {
+        const result = toolText(
+          await client.callTool({
+            name: "search_candidate_experience",
+            arguments: { query },
+          }),
+        );
+        expect(result).toEqual({ text: "Search failed", isError: true });
+        expect(result.text).not.toContain("sk-live");
+      }
+
+      const empty = toolText(
+        await client.callTool({
+          name: "search_candidate_experience",
+          arguments: { query: "  usable query  " },
+        }),
+      );
+      expect(empty.isError).toBe(false);
+      expect(JSON.parse(empty.text)).toEqual({ matches: [] });
+    } finally {
+      await client.close();
+      await searchServer.close();
+    }
+  });
 });
+
+function angled(theta: number): number[] {
+  const vector = new Array<number>(768).fill(0);
+  vector[0] = Math.cos(theta);
+  vector[1] = Math.sin(theta);
+  return vector;
+}
+
+function queryClient(vector: number[]): EmbeddingClient {
+  return {
+    async embedDocument() {
+      throw new Error("embedDocument is not used by search");
+    },
+    async embedQuery() {
+      return vector;
+    },
+  };
+}
+
+async function setEmbedding(
+  table: "WorkExperience" | "Project",
+  id: string,
+  vector: number[],
+): Promise<void> {
+  const literal = `[${vector.join(",")}]`;
+  if (table === "WorkExperience") {
+    await prisma.$executeRaw`
+      UPDATE "WorkExperience" SET embedding = ${literal}::vector WHERE id = ${id}
+    `;
+    return;
+  }
+  await prisma.$executeRaw`
+    UPDATE "Project" SET embedding = ${literal}::vector WHERE id = ${id}
+  `;
+}

@@ -1,4 +1,9 @@
 import {
+  assertUsableEmbedding,
+  selectEmbeddingClient,
+  type EmbeddingClient,
+} from "@jobpilot/ai";
+import {
   certificationSchema,
   educationSchema,
   projectSchema,
@@ -25,6 +30,113 @@ import { getPrisma } from "../db.js";
 import { ProfileError } from "./errors.js";
 
 const listOrder = [{ createdAt: "asc" as const }, { id: "asc" as const }];
+
+const workExperienceSelect = {
+  id: true,
+  userId: true,
+  employer: true,
+  jobTitle: true,
+  startDate: true,
+  endDate: true,
+  accomplishments: true,
+  technologies: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
+const projectSelect = {
+  id: true,
+  userId: true,
+  name: true,
+  description: true,
+  url: true,
+  startDate: true,
+  endDate: true,
+  accomplishments: true,
+  technologies: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
+function resolveEmbeddingClient(embeddingClient: EmbeddingClient | undefined): EmbeddingClient {
+  if (embeddingClient !== undefined) {
+    return embeddingClient;
+  }
+  const client = selectEmbeddingClient({
+    embeddingModel: process.env.EMBEDDING_MODEL,
+    apiKey: process.env.GEMINI_API_KEY,
+    modelName: process.env.GEMINI_EMBEDDING_MODEL,
+  });
+  if (client === undefined) {
+    throw new ProfileError("embedding_failed");
+  }
+  return client;
+}
+
+async function embedForWrite(
+  text: string,
+  embeddingClient: EmbeddingClient | undefined,
+): Promise<number[]> {
+  try {
+    const client = resolveEmbeddingClient(embeddingClient);
+    return assertUsableEmbedding(await client.embedDocument(text));
+  } catch (error) {
+    if (error instanceof ProfileError) {
+      throw error;
+    }
+    throw new ProfileError("embedding_failed");
+  }
+}
+
+function vectorLiteral(values: number[]): string {
+  return `[${values.join(",")}]`;
+}
+
+function experienceDocument(record: {
+  employer: string;
+  jobTitle: string;
+  startDate: string;
+  endDate: string | null;
+  accomplishments: string[];
+  technologies: string[];
+}): string {
+  const technologies = record.technologies.length === 0 ? "none" : record.technologies.join(", ");
+  return [
+    `Employer: ${record.employer}`,
+    `Job title: ${record.jobTitle}`,
+    `Start date: ${record.startDate}`,
+    `End date: ${record.endDate === null ? "Present" : record.endDate}`,
+    "Accomplishments:",
+    ...record.accomplishments.map((accomplishment) => `- ${accomplishment}`),
+    `Technologies: ${technologies}`,
+  ].join("\n");
+}
+
+function projectDocument(record: {
+  name: string;
+  description: string;
+  url: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  accomplishments: string[];
+  technologies: string[];
+}): string {
+  const technologies = record.technologies.length === 0 ? "none" : record.technologies.join(", ");
+  const accomplishments =
+    record.accomplishments.length === 0
+      ? ["none"]
+      : record.accomplishments.map((accomplishment) => `- ${accomplishment}`);
+  return [
+    `Name: ${record.name}`,
+    `Description: ${record.description}`,
+    `URL: ${record.url === null ? "none" : record.url}`,
+    `Start date: ${record.startDate === null ? "none" : record.startDate}`,
+    `End date: ${record.endDate === null ? "none" : record.endDate}`,
+    "Accomplishments:",
+    ...accomplishments,
+    `Technologies: ${technologies}`,
+  ].join("\n");
+}
 
 async function requireUser(authorization: string | undefined) {
   return getAuthenticatedUser(authorization);
@@ -193,18 +305,39 @@ export async function deleteEducation(authorization: string | undefined, id: str
 export async function createWorkExperience(
   authorization: string | undefined,
   input: CreateWorkExperienceBody,
+  embeddingClient?: EmbeddingClient,
 ): Promise<WorkExperience> {
   const user = await requireUser(authorization);
-  const created = await getPrisma().workExperience.create({
-    data: {
-      userId: user.id,
+  const vector = await embedForWrite(
+    experienceDocument({
       employer: input.employer,
       jobTitle: input.jobTitle,
-      startDate: parseCalendarDate(input.startDate),
-      endDate: optionalCalendarDate(input.endDate),
+      startDate: input.startDate,
+      endDate: input.endDate ?? null,
       accomplishments: input.accomplishments,
       technologies: input.technologies,
-    },
+    }),
+    embeddingClient,
+  );
+  const created = await getPrisma().$transaction(async (tx) => {
+    const row = await tx.workExperience.create({
+      data: {
+        userId: user.id,
+        employer: input.employer,
+        jobTitle: input.jobTitle,
+        startDate: parseCalendarDate(input.startDate),
+        endDate: optionalCalendarDate(input.endDate),
+        accomplishments: input.accomplishments,
+        technologies: input.technologies,
+      },
+      select: workExperienceSelect,
+    });
+    await tx.$executeRaw`
+      UPDATE "WorkExperience"
+      SET embedding = ${vectorLiteral(vector)}::vector
+      WHERE id = ${row.id}
+    `;
+    return row;
   });
   return workExperienceSchema.parse(toWorkExperienceJson(created));
 }
@@ -216,6 +349,7 @@ export async function listWorkExperience(
   const rows = await getPrisma().workExperience.findMany({
     where: { userId: user.id },
     orderBy: listOrder,
+    select: workExperienceSelect,
   });
   return { experience: rows.map((row) => workExperienceSchema.parse(toWorkExperienceJson(row))) };
 }
@@ -224,10 +358,12 @@ export async function updateWorkExperience(
   authorization: string | undefined,
   id: string,
   patch: UpdateWorkExperienceBody,
+  embeddingClient?: EmbeddingClient,
 ): Promise<WorkExperience> {
   const user = await requireUser(authorization);
   const existing = await getPrisma().workExperience.findFirst({
     where: { id, userId: user.id },
+    select: workExperienceSelect,
   });
   if (existing === null) {
     throw new ProfileError("not_found");
@@ -236,21 +372,42 @@ export async function updateWorkExperience(
     mergedDate(patch.startDate, existing.startDate),
     mergedDate(patch.endDate, existing.endDate),
   );
-  const updated = await getPrisma().workExperience.update({
-    where: { id: existing.id },
-    data: {
-      employer: patch.employer,
-      jobTitle: patch.jobTitle,
-      startDate: patch.startDate === undefined ? undefined : parseCalendarDate(patch.startDate),
+  const vector = await embedForWrite(
+    experienceDocument({
+      employer: patch.employer ?? existing.employer,
+      jobTitle: patch.jobTitle ?? existing.jobTitle,
+      startDate: patch.startDate ?? formatCalendarDate(existing.startDate),
       endDate:
-        patch.endDate === undefined
-          ? undefined
-          : patch.endDate === null
-            ? null
-            : parseCalendarDate(patch.endDate),
-      accomplishments: patch.accomplishments,
-      technologies: patch.technologies,
-    },
+        patch.endDate === undefined ? formatCalendarDateOrNull(existing.endDate) : patch.endDate,
+      accomplishments: patch.accomplishments ?? existing.accomplishments,
+      technologies: patch.technologies ?? existing.technologies,
+    }),
+    embeddingClient,
+  );
+  const updated = await getPrisma().$transaction(async (tx) => {
+    const row = await tx.workExperience.update({
+      where: { id: existing.id },
+      data: {
+        employer: patch.employer,
+        jobTitle: patch.jobTitle,
+        startDate: patch.startDate === undefined ? undefined : parseCalendarDate(patch.startDate),
+        endDate:
+          patch.endDate === undefined
+            ? undefined
+            : patch.endDate === null
+              ? null
+              : parseCalendarDate(patch.endDate),
+        accomplishments: patch.accomplishments,
+        technologies: patch.technologies,
+      },
+      select: workExperienceSelect,
+    });
+    await tx.$executeRaw`
+      UPDATE "WorkExperience"
+      SET embedding = ${vectorLiteral(vector)}::vector
+      WHERE id = ${row.id}
+    `;
+    return row;
   });
   return workExperienceSchema.parse(toWorkExperienceJson(updated));
 }
@@ -269,19 +426,41 @@ export async function deleteWorkExperience(
 export async function createProject(
   authorization: string | undefined,
   input: CreateProjectBody,
+  embeddingClient?: EmbeddingClient,
 ): Promise<Project> {
   const user = await requireUser(authorization);
-  const created = await getPrisma().project.create({
-    data: {
-      userId: user.id,
+  const vector = await embedForWrite(
+    projectDocument({
       name: input.name,
       description: input.description,
       url: input.url ?? null,
-      startDate: optionalCalendarDate(input.startDate),
-      endDate: optionalCalendarDate(input.endDate),
+      startDate: input.startDate ?? null,
+      endDate: input.endDate ?? null,
       accomplishments: input.accomplishments,
       technologies: input.technologies,
-    },
+    }),
+    embeddingClient,
+  );
+  const created = await getPrisma().$transaction(async (tx) => {
+    const row = await tx.project.create({
+      data: {
+        userId: user.id,
+        name: input.name,
+        description: input.description,
+        url: input.url ?? null,
+        startDate: optionalCalendarDate(input.startDate),
+        endDate: optionalCalendarDate(input.endDate),
+        accomplishments: input.accomplishments,
+        technologies: input.technologies,
+      },
+      select: projectSelect,
+    });
+    await tx.$executeRaw`
+      UPDATE "Project"
+      SET embedding = ${vectorLiteral(vector)}::vector
+      WHERE id = ${row.id}
+    `;
+    return row;
   });
   return projectSchema.parse(toProjectJson(created));
 }
@@ -293,6 +472,7 @@ export async function listProjects(
   const rows = await getPrisma().project.findMany({
     where: { userId: user.id },
     orderBy: listOrder,
+    select: projectSelect,
   });
   return { projects: rows.map((row) => projectSchema.parse(toProjectJson(row))) };
 }
@@ -301,9 +481,13 @@ export async function updateProject(
   authorization: string | undefined,
   id: string,
   patch: UpdateProjectBody,
+  embeddingClient?: EmbeddingClient,
 ): Promise<Project> {
   const user = await requireUser(authorization);
-  const existing = await getPrisma().project.findFirst({ where: { id, userId: user.id } });
+  const existing = await getPrisma().project.findFirst({
+    where: { id, userId: user.id },
+    select: projectSelect,
+  });
   if (existing === null) {
     throw new ProfileError("not_found");
   }
@@ -311,27 +495,50 @@ export async function updateProject(
     mergedDate(patch.startDate, existing.startDate),
     mergedDate(patch.endDate, existing.endDate),
   );
-  const updated = await getPrisma().project.update({
-    where: { id: existing.id },
-    data: {
-      name: patch.name,
-      description: patch.description,
-      url: patch.url,
+  const vector = await embedForWrite(
+    projectDocument({
+      name: patch.name ?? existing.name,
+      description: patch.description ?? existing.description,
+      url: patch.url === undefined ? existing.url : patch.url,
       startDate:
-        patch.startDate === undefined
-          ? undefined
-          : patch.startDate === null
-            ? null
-            : parseCalendarDate(patch.startDate),
+        patch.startDate === undefined ? formatCalendarDateOrNull(existing.startDate) : patch.startDate,
       endDate:
-        patch.endDate === undefined
-          ? undefined
-          : patch.endDate === null
-            ? null
-            : parseCalendarDate(patch.endDate),
-      accomplishments: patch.accomplishments,
-      technologies: patch.technologies,
-    },
+        patch.endDate === undefined ? formatCalendarDateOrNull(existing.endDate) : patch.endDate,
+      accomplishments: patch.accomplishments ?? existing.accomplishments,
+      technologies: patch.technologies ?? existing.technologies,
+    }),
+    embeddingClient,
+  );
+  const updated = await getPrisma().$transaction(async (tx) => {
+    const row = await tx.project.update({
+      where: { id: existing.id },
+      data: {
+        name: patch.name,
+        description: patch.description,
+        url: patch.url,
+        startDate:
+          patch.startDate === undefined
+            ? undefined
+            : patch.startDate === null
+              ? null
+              : parseCalendarDate(patch.startDate),
+        endDate:
+          patch.endDate === undefined
+            ? undefined
+            : patch.endDate === null
+              ? null
+              : parseCalendarDate(patch.endDate),
+        accomplishments: patch.accomplishments,
+        technologies: patch.technologies,
+      },
+      select: projectSelect,
+    });
+    await tx.$executeRaw`
+      UPDATE "Project"
+      SET embedding = ${vectorLiteral(vector)}::vector
+      WHERE id = ${row.id}
+    `;
+    return row;
   });
   return projectSchema.parse(toProjectJson(updated));
 }

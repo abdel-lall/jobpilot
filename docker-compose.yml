@@ -22,7 +22,9 @@ services:
       PORT: "3000"
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-}
+      GEMINI_EMBEDDING_MODEL: ${GEMINI_EMBEDDING_MODEL:-}
       JOB_ANALYSIS_MODEL: ${JOB_ANALYSIS_MODEL:-stub}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-stub}
       DATABASE_URL: postgresql://postgres:jobpilot@postgres:5432/postgres
       JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:5173}
@@ -42,6 +44,9 @@ services:
       MCP_PORT: "3010"
       DATABASE_URL: postgresql://postgres:jobpilot@postgres:5432/postgres
       MCP_SHARED_SECRET: ${MCP_SHARED_SECRET:-dev-only-change-me}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_EMBEDDING_MODEL: ${GEMINI_EMBEDDING_MODEL:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-stub}
     depends_on:
       - postgres
 

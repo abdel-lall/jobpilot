@@ -10,6 +10,7 @@ import {
   updateSkillBodySchema,
   updateWorkExperienceBodySchema,
 } from "@jobpilot/shared";
+import type { EmbeddingClient } from "@jobpilot/ai";
 import { Router, type Request, type Response } from "express";
 import { AuthError } from "../auth/errors.js";
 import { ProfileError } from "../profile/errors.js";
@@ -46,6 +47,10 @@ function sendProfileError(response: Response, error: unknown): void {
       response.status(404).json({ error: "Not found" });
       return;
     }
+    if (error.code === "embedding_failed") {
+      response.status(502).json({ error: "Embedding failed" });
+      return;
+    }
     response.status(400).json({ error: "Invalid input" });
     return;
   }
@@ -78,7 +83,7 @@ function pathId(request: Request): string {
   return typeof id === "string" ? id : "";
 }
 
-export function createProfileRouter(): Router {
+export function createProfileRouter(embeddingClient?: EmbeddingClient): Router {
   const router = Router();
 
   router.post("/profile/skills", async (request, response) => {
@@ -152,7 +157,11 @@ export function createProfileRouter(): Router {
       return;
     }
     await respond(response, 201, async () => ({
-      experience: await createWorkExperience(request.header("authorization"), parsed.data),
+      experience: await createWorkExperience(
+        request.header("authorization"),
+        parsed.data,
+        embeddingClient,
+      ),
     }));
   });
 
@@ -168,7 +177,12 @@ export function createProfileRouter(): Router {
     }
     const id = pathId(request);
     await respond(response, 200, async () => ({
-      experience: await updateWorkExperience(request.header("authorization"), id, parsed.data),
+      experience: await updateWorkExperience(
+        request.header("authorization"),
+        id,
+        parsed.data,
+        embeddingClient,
+      ),
     }));
   });
 
@@ -184,7 +198,7 @@ export function createProfileRouter(): Router {
       return;
     }
     await respond(response, 201, async () => ({
-      project: await createProject(request.header("authorization"), parsed.data),
+      project: await createProject(request.header("authorization"), parsed.data, embeddingClient),
     }));
   });
 
@@ -200,7 +214,12 @@ export function createProfileRouter(): Router {
     }
     const id = pathId(request);
     await respond(response, 200, async () => ({
-      project: await updateProject(request.header("authorization"), id, parsed.data),
+      project: await updateProject(
+        request.header("authorization"),
+        id,
+        parsed.data,
+        embeddingClient,
+      ),
     }));
   });
 

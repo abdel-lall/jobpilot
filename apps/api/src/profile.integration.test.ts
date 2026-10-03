@@ -1,9 +1,14 @@
 import { randomUUID } from "node:crypto";
+import { createStubEmbeddingClient, type EmbeddingClient } from "@jobpilot/ai";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@jobpilot/database";
 import request from "supertest";
 import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
+
+delete process.env.GEMINI_API_KEY;
+delete process.env.GEMINI_EMBEDDING_MODEL;
+delete process.env.EMBEDDING_MODEL;
 
 const databaseUrl = process.env.DATABASE_URL;
 const jwtSecret = process.env.JWT_SECRET;
@@ -20,7 +25,8 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: databaseUrl }),
 });
 
-const app = createApp();
+const app = createApp({ embeddingClient: createStubEmbeddingClient() });
+const unresolvedApp = createApp();
 const createdEmails: string[] = [];
 const password = "password1";
 
@@ -640,4 +646,319 @@ describe("profile API", () => {
     expect(rows.map((row) => row.id)).toEqual(sorted.map((row) => row.id));
     expect(rows.map((row) => row.id)).toEqual([firstRecord.id, secondRecord.id].sort());
   });
+
+  it("stores, replaces, and deletes embeddings for the phase 12 document", async () => {
+    const stub = createStubEmbeddingClient();
+    const documents: string[] = [];
+    const queries: string[] = [];
+    const recordingClient: EmbeddingClient = {
+      async embedDocument(text) {
+        documents.push(text);
+        const vector = await stub.embedDocument(text);
+        if (text.includes("Senior Engineer") || text.includes("Updated description.")) {
+          const replaced = vector.slice();
+          replaced[0] = 0;
+          replaced[1] = 1;
+          return replaced;
+        }
+        return vector;
+      },
+      async embedQuery(text) {
+        queries.push(text);
+        return stub.embedQuery(text);
+      },
+    };
+    const recordingApp = createApp({ embeddingClient: recordingClient });
+    const owner = await registerAndLogin();
+    const experienceBody = {
+      employer: "Example Co",
+      jobTitle: "Engineer",
+      startDate: "2021-01-04",
+      endDate: "2022-06-01",
+      accomplishments: ["Shipped the billing service"],
+      technologies: ["TypeScript", "PostgreSQL"],
+    };
+    const experienceDocument = [
+      "Employer: Example Co",
+      "Job title: Engineer",
+      "Start date: 2021-01-04",
+      "End date: 2022-06-01",
+      "Accomplishments:",
+      "- Shipped the billing service",
+      "Technologies: TypeScript, PostgreSQL",
+    ].join("\n");
+    const mergedExperienceDocument = experienceDocument.replace(
+      "Job title: Engineer",
+      "Job title: Senior Engineer",
+    );
+    const projectBody = {
+      name: "JobPilot",
+      description: "A job application assistant.",
+      url: "https://example.com/jobpilot",
+      startDate: "2024-02-01",
+      endDate: null,
+      accomplishments: [],
+      technologies: ["React"],
+    };
+    const projectDocument = [
+      "Name: JobPilot",
+      "Description: A job application assistant.",
+      "URL: https://example.com/jobpilot",
+      "Start date: 2024-02-01",
+      "End date: none",
+      "Accomplishments:",
+      "none",
+      "Technologies: React",
+    ].join("\n");
+    const mergedProjectDocument = projectDocument.replace(
+      "Description: A job application assistant.",
+      "Description: Updated description.",
+    );
+
+    const createdExperience = await request(recordingApp)
+      .post("/profile/experience")
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send(experienceBody);
+    expect(createdExperience.status).toBe(201);
+    const experience = record(createdExperience.body as JsonObject, "experience");
+    expect(experience).not.toHaveProperty("embedding");
+    expect(experience).toMatchObject(experienceBody);
+    expect(await storedEmbedding("WorkExperience", experience.id)).toEqual(stubVector());
+
+    const updatedExperience = await request(recordingApp)
+      .patch(`/profile/experience/${experience.id}`)
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send({ jobTitle: "Senior Engineer" });
+    expect(updatedExperience.status).toBe(200);
+    expect(record(updatedExperience.body as JsonObject, "experience")).not.toHaveProperty("embedding");
+    expect(await storedEmbedding("WorkExperience", experience.id)).toEqual(replacedVector());
+
+    const createdProject = await request(recordingApp)
+      .post("/profile/projects")
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send(projectBody);
+    expect(createdProject.status).toBe(201);
+    const project = record(createdProject.body as JsonObject, "project");
+    expect(project).not.toHaveProperty("embedding");
+    expect(await storedEmbedding("Project", project.id)).toEqual(stubVector());
+
+    const updatedProject = await request(recordingApp)
+      .patch(`/profile/projects/${project.id}`)
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send({ description: "Updated description." });
+    expect(updatedProject.status).toBe(200);
+    expect(await storedEmbedding("Project", project.id)).toEqual(replacedVector());
+
+    expect(documents).toEqual([
+      experienceDocument,
+      mergedExperienceDocument,
+      projectDocument,
+      mergedProjectDocument,
+    ]);
+    expect(queries).toEqual([]);
+
+    const deleted = await request(recordingApp)
+      .delete(`/profile/experience/${experience.id}`)
+      .set("Authorization", `Bearer ${owner.token}`);
+    expect(deleted.status).toBe(204);
+    expect(await storedEmbedding("WorkExperience", experience.id)).toBeNull();
+    const deletedProject = await request(recordingApp)
+      .delete(`/profile/projects/${project.id}`)
+      .set("Authorization", `Bearer ${owner.token}`);
+    expect(deletedProject.status).toBe(204);
+    expect(await storedEmbedding("Project", project.id)).toBeNull();
+  });
+
+  it("does not embed skills, education, certifications, or invalid experience writes", async () => {
+    let calls = 0;
+    const countingClient: EmbeddingClient = {
+      async embedDocument() {
+        calls += 1;
+        return stubVector();
+      },
+      async embedQuery() {
+        calls += 1;
+        return stubVector();
+      },
+    };
+    const countingApp = createApp({ embeddingClient: countingClient });
+    const owner = await registerAndLogin();
+
+    const missingToken = await request(countingApp).post("/profile/experience").send({
+      employer: "Example Co",
+      jobTitle: "Engineer",
+      startDate: "2021-01-04",
+      accomplishments: ["Shipped the billing service"],
+      technologies: [],
+    });
+    expect(missingToken.status).toBe(401);
+    const invalid = await request(countingApp)
+      .post("/profile/experience")
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send({
+        employer: "Example Co",
+        jobTitle: "Engineer",
+        startDate: "2021-01-04",
+        accomplishments: [],
+        technologies: [],
+      });
+    expect(invalid.status).toBe(400);
+
+    const skill = await request(countingApp)
+      .post("/profile/skills")
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send({ name: "TypeScript" });
+    const education = await request(countingApp)
+      .post("/profile/education")
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send({
+        institution: "State University",
+        degree: "B.S.",
+        fieldOfStudy: "Computer Science",
+        startDate: "2016-09-01",
+        endDate: "2020-05-15",
+      });
+    const certification = await request(countingApp)
+      .post("/profile/certifications")
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send({
+        name: "AWS Cloud Practitioner",
+        issuer: "Amazon Web Services",
+        issuedOn: "2023-06-01",
+        expiresOn: "2026-06-01",
+      });
+    expect(skill.status).toBe(201);
+    expect(education.status).toBe(201);
+    expect(certification.status).toBe(201);
+    expect(calls).toBe(0);
+  });
+
+  it("returns 502 and leaves create and update rows unchanged when embedding fails", async () => {
+    const rejectingClient: EmbeddingClient = {
+      async embedDocument() {
+        throw new Error("provider unavailable");
+      },
+      async embedQuery() {
+        throw new Error("provider unavailable");
+      },
+    };
+    const rejectingApp = createApp({ embeddingClient: rejectingClient });
+    const owner = await registerAndLogin();
+    const experienceBody = {
+      employer: "Example Co",
+      jobTitle: "Engineer",
+      startDate: "2021-01-04",
+      endDate: "2022-06-01",
+      accomplishments: ["Shipped the billing service"],
+      technologies: ["TypeScript"],
+    };
+
+    const created = await request(rejectingApp)
+      .post("/profile/experience")
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send(experienceBody);
+    expect(created.status).toBe(502);
+    expect(created.body).toEqual({ error: "Embedding failed" });
+    expect(await prisma.workExperience.count({ where: { userId: owner.userId } })).toBe(0);
+
+    const stored = await request(app)
+      .post("/profile/experience")
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send(experienceBody);
+    const experience = record(stored.body as JsonObject, "experience");
+    const previousVector = await storedEmbedding("WorkExperience", experience.id);
+
+    const updated = await request(rejectingApp)
+      .patch(`/profile/experience/${experience.id}`)
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send({ jobTitle: "Should Roll Back" });
+    expect(updated.status).toBe(502);
+    expect(updated.body).toEqual({ error: "Embedding failed" });
+    const listed = await request(app)
+      .get("/profile/experience")
+      .set("Authorization", `Bearer ${owner.token}`);
+    expect(records(listed.body as JsonObject, "experience")).toEqual([experience]);
+    expect(await storedEmbedding("WorkExperience", experience.id)).toEqual(previousVector);
+
+    for (const vector of [new Array<number>(768).fill(0), [1, 2, 3]]) {
+      const invalidApp = createApp({
+        embeddingClient: {
+          async embedDocument() {
+            return vector;
+          },
+          async embedQuery() {
+            return vector;
+          },
+        },
+      });
+      const failed = await request(invalidApp)
+        .post("/profile/experience")
+        .set("Authorization", `Bearer ${owner.token}`)
+        .send({
+          employer: "Other Co",
+          jobTitle: "Engineer",
+          startDate: "2021-01-04",
+          accomplishments: ["Shipped the billing service"],
+          technologies: [],
+        });
+      expect(failed.status).toBe(502);
+      expect(failed.body).toEqual({ error: "Embedding failed" });
+    }
+    expect(await prisma.workExperience.count({ where: { userId: owner.userId, employer: "Other Co" } })).toBe(0);
+  });
+
+  it("returns 502 and writes nothing when experience create has no embedding client", async () => {
+    expect(process.env.GEMINI_API_KEY).toBeUndefined();
+    expect(process.env.GEMINI_EMBEDDING_MODEL).toBeUndefined();
+    expect(process.env.EMBEDDING_MODEL).toBeUndefined();
+    const owner = await registerAndLogin();
+    const created = await request(unresolvedApp)
+      .post("/profile/experience")
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send({
+        employer: "Example Co",
+        jobTitle: "Engineer",
+        startDate: "2021-01-04",
+        accomplishments: ["Shipped the billing service"],
+        technologies: [],
+      });
+    expect(created.status).toBe(502);
+    expect(created.body).toEqual({ error: "Embedding failed" });
+    expect(await prisma.workExperience.count({ where: { userId: owner.userId } })).toBe(0);
+  });
 });
+
+function stubVector(): number[] {
+  const vector = new Array<number>(768).fill(0);
+  vector[0] = 1;
+  return vector;
+}
+
+function replacedVector(): number[] {
+  const vector = stubVector();
+  vector[0] = 0;
+  vector[1] = 1;
+  return vector;
+}
+
+async function storedEmbedding(
+  table: "WorkExperience" | "Project",
+  id: string,
+): Promise<number[] | null> {
+  const rows =
+    table === "WorkExperience"
+      ? await prisma.$queryRaw<Array<{ embedding: string | null }>>`
+          SELECT embedding::text AS embedding FROM "WorkExperience" WHERE id = ${id}
+        `
+      : await prisma.$queryRaw<Array<{ embedding: string | null }>>`
+          SELECT embedding::text AS embedding FROM "Project" WHERE id = ${id}
+        `;
+  const embedding = rows[0]?.embedding;
+  if (embedding === undefined || embedding === null) {
+    return null;
+  }
+  return embedding
+    .slice(1, -1)
+    .split(",")
+    .map((component) => Number(component.trim()));
+}

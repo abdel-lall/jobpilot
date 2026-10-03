@@ -63,6 +63,9 @@ importers:
 
   apps/portfolio-mcp:
     dependencies:
+      '@jobpilot/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@jobpilot/database':
         specifier: workspace:*
         version: link:../../packages/database
