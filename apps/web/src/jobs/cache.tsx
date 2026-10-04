@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { useSession } from "@/auth/session";
+import { isInterviewPlanQuery } from "@/jobs/interview-plan";
 import { isJobsQuery } from "@/jobs/requests";
 import { isTailoredResumeQuery } from "@/jobs/tailored-resume";
 
@@ -17,6 +18,7 @@ export function JobsQueryCache() {
     if (session.status === "signed-out") {
       queryClient.removeQueries({ predicate: isJobsQuery });
       queryClient.removeQueries({ predicate: isTailoredResumeQuery });
+      queryClient.removeQueries({ predicate: isInterviewPlanQuery });
       previousUserId.current = null;
       return;
     }
@@ -29,6 +31,9 @@ export function JobsQueryCache() {
       });
       queryClient.removeQueries({
         predicate: (query) => isTailoredResumeQuery(query) && query.queryKey[1] === previousId,
+      });
+      queryClient.removeQueries({
+        predicate: (query) => isInterviewPlanQuery(query) && query.queryKey[1] === previousId,
       });
     }
     previousUserId.current = userId;

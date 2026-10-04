@@ -30,6 +30,8 @@ import {
   requestErrorMessage,
   updateJob,
 } from "@/jobs/requests";
+import { InterviewPlanPanel } from "@/jobs/interview-plan-panel";
+import { interviewPlanQueryKey } from "@/jobs/interview-plan";
 import { tailoredResumeQueryKey } from "@/jobs/tailored-resume";
 import { TailoredResumePanel } from "@/jobs/tailored-resume-panel";
 
@@ -52,6 +54,10 @@ function notAvailable(value: boolean | null): "Not available" {
 }
 
 function tailoredResumeLabel(present: boolean): "Present" | "Not available" {
+  return present ? "Present" : "Not available";
+}
+
+function interviewPlanLabel(present: boolean): "Present" | "Not available" {
   return present ? "Present" : "Not available";
 }
 
@@ -249,27 +255,31 @@ function JobRow({
   job,
   accessToken,
   editing,
-  panelOpen,
+  resumeOpen,
+  planOpen,
   run,
   onEdit,
   onCancel,
-  onOpen,
+  onOpenResume,
+  onOpenPlan,
   onClose,
   onChanged,
-  onResumeRefetch,
+  onPanelRefetch,
 }: {
   userId: string;
   job: Job;
   accessToken: string | null;
   editing: boolean;
-  panelOpen: boolean;
+  resumeOpen: boolean;
+  planOpen: boolean;
   run: Runner;
   onEdit: () => void;
   onCancel: () => void;
-  onOpen: () => void;
+  onOpenResume: () => void;
+  onOpenPlan: () => void;
   onClose: () => void;
   onChanged: () => Promise<unknown>;
-  onResumeRefetch: () => Promise<unknown>;
+  onPanelRefetch: () => Promise<unknown>;
 }) {
   return (
     <li data-testid="job-row" className="grid gap-3">
@@ -306,7 +316,9 @@ function JobRow({
       </p>
       <p>
         Interview plan{" "}
-        <span data-testid="job-interview-plan">{notAvailable(job.status.interviewPlanPresent)}</span>
+        <span data-testid="job-interview-plan">
+          {interviewPlanLabel(job.status.interviewPlanPresent)}
+        </span>
       </p>
       <p>
         Score <span data-testid="job-score">{notAvailable(job.status.latestOverallScore)}</span>
@@ -314,7 +326,7 @@ function JobRow({
       <p>
         Readiness <span data-testid="job-readiness">{notAvailable(job.status.readinessBadge)}</span>
       </p>
-      {panelOpen ? (
+      {resumeOpen ? (
         <TailoredResumePanel
           userId={userId}
           jobId={job.id}
@@ -322,8 +334,20 @@ function JobRow({
           onClose={onClose}
         />
       ) : (
-        <Button type="button" data-testid="open-tailored-resume" onClick={onOpen}>
+        <Button type="button" data-testid="open-tailored-resume" onClick={onOpenResume}>
           Tailored resume
+        </Button>
+      )}
+      {planOpen ? (
+        <InterviewPlanPanel
+          userId={userId}
+          jobId={job.id}
+          accessToken={accessToken}
+          onClose={onClose}
+        />
+      ) : (
+        <Button type="button" data-testid="open-interview-plan" onClick={onOpenPlan}>
+          Interview plan
         </Button>
       )}
       {editing ? (
@@ -334,7 +358,7 @@ function JobRow({
           onCancel={onCancel}
           onSaved={async () => {
             await onChanged();
-            await onResumeRefetch();
+            await onPanelRefetch();
           }}
         />
       ) : (
@@ -350,7 +374,7 @@ function JobRow({
             if (editing) {
               onCancel();
             }
-            if (panelOpen) {
+            if (resumeOpen || planOpen) {
               onClose();
             }
             await onChanged();
@@ -369,9 +393,11 @@ export function Dashboard({ userId, accessToken }: DashboardProps) {
   accessTokenRef.current = accessToken;
   const [requestError, setRequestError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [openJobId, setOpenJobId] = useState<string | null>(null);
-  const openJobIdRef = useRef(openJobId);
-  openJobIdRef.current = openJobId;
+  const [openPanel, setOpenPanel] = useState<{ jobId: string; kind: "resume" | "plan" } | null>(
+    null,
+  );
+  const openPanelRef = useRef(openPanel);
+  openPanelRef.current = openPanel;
 
   const query = useQuery({
     queryKey: jobsQueryKey(userId),
@@ -426,20 +452,25 @@ export function Dashboard({ userId, accessToken }: DashboardProps) {
                   job={job}
                   accessToken={accessToken}
                   editing={editingId === job.id}
-                  panelOpen={openJobId === job.id}
+                  resumeOpen={openPanel?.jobId === job.id && openPanel.kind === "resume"}
+                  planOpen={openPanel?.jobId === job.id && openPanel.kind === "plan"}
                   run={run}
                   onEdit={() => setEditingId(job.id)}
                   onCancel={() => setEditingId(null)}
-                  onOpen={() => setOpenJobId(job.id)}
-                  onClose={() => setOpenJobId(null)}
+                  onOpenResume={() => setOpenPanel({ jobId: job.id, kind: "resume" })}
+                  onOpenPlan={() => setOpenPanel({ jobId: job.id, kind: "plan" })}
+                  onClose={() => setOpenPanel(null)}
                   onChanged={refetch}
-                  onResumeRefetch={() => {
-                    if (openJobIdRef.current !== job.id) {
+                  onPanelRefetch={() => {
+                    const open = openPanelRef.current;
+                    if (open === null || open.jobId !== job.id) {
                       return Promise.resolve();
                     }
-                    return queryClient.refetchQueries({
-                      queryKey: tailoredResumeQueryKey(userId, job.id),
-                    });
+                    const queryKey =
+                      open.kind === "resume"
+                        ? tailoredResumeQueryKey(userId, job.id)
+                        : interviewPlanQueryKey(userId, job.id);
+                    return queryClient.refetchQueries({ queryKey });
                   }}
                 />
               ))}
