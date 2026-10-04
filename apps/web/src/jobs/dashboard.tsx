@@ -30,6 +30,8 @@ import {
   requestErrorMessage,
   updateJob,
 } from "@/jobs/requests";
+import { tailoredResumeQueryKey } from "@/jobs/tailored-resume";
+import { TailoredResumePanel } from "@/jobs/tailored-resume-panel";
 
 type DashboardProps = {
   userId: string;
@@ -47,6 +49,10 @@ function requireToken(accessToken: string | null): string {
 
 function notAvailable(value: boolean | null): "Not available" {
   return value === false || value === null ? "Not available" : "Not available";
+}
+
+function tailoredResumeLabel(present: boolean): "Present" | "Not available" {
+  return present ? "Present" : "Not available";
 }
 
 function analysisLabel(current: boolean): "Current" | "Not available" {
@@ -239,21 +245,31 @@ function EditJobForm({
 }
 
 function JobRow({
+  userId,
   job,
   accessToken,
   editing,
+  panelOpen,
   run,
   onEdit,
   onCancel,
+  onOpen,
+  onClose,
   onChanged,
+  onResumeRefetch,
 }: {
+  userId: string;
   job: Job;
   accessToken: string | null;
   editing: boolean;
+  panelOpen: boolean;
   run: Runner;
   onEdit: () => void;
   onCancel: () => void;
+  onOpen: () => void;
+  onClose: () => void;
   onChanged: () => Promise<unknown>;
+  onResumeRefetch: () => Promise<unknown>;
 }) {
   return (
     <li data-testid="job-row" className="grid gap-3">
@@ -284,7 +300,9 @@ function JobRow({
       </p>
       <p>
         Tailored resume{" "}
-        <span data-testid="job-tailored-resume">{notAvailable(job.status.tailoredResumePresent)}</span>
+        <span data-testid="job-tailored-resume">
+          {tailoredResumeLabel(job.status.tailoredResumePresent)}
+        </span>
       </p>
       <p>
         Interview plan{" "}
@@ -296,13 +314,28 @@ function JobRow({
       <p>
         Readiness <span data-testid="job-readiness">{notAvailable(job.status.readinessBadge)}</span>
       </p>
+      {panelOpen ? (
+        <TailoredResumePanel
+          userId={userId}
+          jobId={job.id}
+          accessToken={accessToken}
+          onClose={onClose}
+        />
+      ) : (
+        <Button type="button" data-testid="open-tailored-resume" onClick={onOpen}>
+          Tailored resume
+        </Button>
+      )}
       {editing ? (
         <EditJobForm
           accessToken={accessToken}
           job={job}
           run={run}
           onCancel={onCancel}
-          onSaved={onChanged}
+          onSaved={async () => {
+            await onChanged();
+            await onResumeRefetch();
+          }}
         />
       ) : (
         <Button type="button" onClick={onEdit}>
@@ -316,6 +349,9 @@ function JobRow({
             await deleteJob(requireToken(accessToken), job.id);
             if (editing) {
               onCancel();
+            }
+            if (panelOpen) {
+              onClose();
             }
             await onChanged();
           });
@@ -333,6 +369,9 @@ export function Dashboard({ userId, accessToken }: DashboardProps) {
   accessTokenRef.current = accessToken;
   const [requestError, setRequestError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [openJobId, setOpenJobId] = useState<string | null>(null);
+  const openJobIdRef = useRef(openJobId);
+  openJobIdRef.current = openJobId;
 
   const query = useQuery({
     queryKey: jobsQueryKey(userId),
@@ -383,13 +422,25 @@ export function Dashboard({ userId, accessToken }: DashboardProps) {
               {data.map((job) => (
                 <JobRow
                   key={job.id}
+                  userId={userId}
                   job={job}
                   accessToken={accessToken}
                   editing={editingId === job.id}
+                  panelOpen={openJobId === job.id}
                   run={run}
                   onEdit={() => setEditingId(job.id)}
                   onCancel={() => setEditingId(null)}
+                  onOpen={() => setOpenJobId(job.id)}
+                  onClose={() => setOpenJobId(null)}
                   onChanged={refetch}
+                  onResumeRefetch={() => {
+                    if (openJobIdRef.current !== job.id) {
+                      return Promise.resolve();
+                    }
+                    return queryClient.refetchQueries({
+                      queryKey: tailoredResumeQueryKey(userId, job.id),
+                    });
+                  }}
                 />
               ))}
             </ul>
