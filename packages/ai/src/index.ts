@@ -15,3 +15,14 @@ export {
   type EmbeddingClient,
   type EmbeddingClientSelection,
 } from "./embedding.js";
+export {
+  assertTailoredResumeGrounded,
+  createGeminiResumeModel,
+  createStubResumeModel,
+  tailorResume,
+  type GroundingProfile,
+  type ResumeTailoringModel,
+  type ResumeTailoringModelInput,
+  type ResumeToolClient,
+  type ResumeToolResults,
+} from "./tailored-resume.js";

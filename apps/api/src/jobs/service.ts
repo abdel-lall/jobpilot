@@ -16,10 +16,9 @@ import { getPrisma } from "../db.js";
 import { JobError } from "./errors.js";
 
 const listOrder = [{ createdAt: "asc" as const }, { id: "asc" as const }];
-const withAnalysis = { analysis: true } as const;
+const withAnalysis = { analysis: true, tailoredResume: true } as const;
 
 const emptyCompanionStatus = {
-  tailoredResumePresent: false,
   interviewPlanPresent: false,
   latestOverallScore: null,
   readinessBadge: null,
@@ -47,6 +46,7 @@ type StoredJob = {
   createdAt: Date;
   updatedAt: Date;
   analysis: StoredAnalysis | null;
+  tailoredResume: { id: string } | null;
 };
 
 function analysisColumns(description: string, analysis: JobAnalysis) {
@@ -120,6 +120,7 @@ function toJob(record: StoredJob): Job {
     status: {
       analysisCurrent:
         record.analysis !== null && record.analysis.analyzedDescription === record.jobDescription,
+      tailoredResumePresent: record.tailoredResume !== null,
       ...emptyCompanionStatus,
     },
     analysis,
@@ -204,8 +205,9 @@ export async function updateJob(
 
   const nextDescription = patch.jobDescription;
   const analysis = await analyzeForWrite(nextDescription, jobAnalysisModel);
-  const updated = await getPrisma().$transaction((tx) =>
-    tx.job.update({
+  const updated = await getPrisma().$transaction(async (tx) => {
+    await tx.tailoredResume.deleteMany({ where: { jobId: existing.id } });
+    return tx.job.update({
       where: { id: existing.id },
       data: {
         companyName: patch.companyName,
@@ -221,8 +223,8 @@ export async function updateJob(
         },
       },
       include: withAnalysis,
-    }),
-  );
+    });
+  });
   return toJob(updated);
 }
 

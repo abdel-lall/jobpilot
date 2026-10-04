@@ -1,4 +1,9 @@
-import type { EmbeddingClient, JobAnalysisModel } from "@jobpilot/ai";
+import type {
+  EmbeddingClient,
+  JobAnalysisModel,
+  ResumeTailoringModel,
+  ResumeToolClient,
+} from "@jobpilot/ai";
 import type { PrismaClient } from "@jobpilot/database";
 import express, { type NextFunction, type Request, type Response } from "express";
 import type { AuthServiceOptions } from "./auth/service.js";
@@ -7,10 +12,13 @@ import { createAuthRouter } from "./routes/auth.js";
 import { createProfileRouter } from "./routes/profile.js";
 import { createResumeRouter } from "./routes/resumes.js";
 import { createJobsRouter } from "./routes/jobs.js";
+import { createTailoredResumeRouter } from "./routes/tailored-resume.js";
 
 export type CreateAppOptions = AuthServiceOptions & {
   jobAnalysisModel?: JobAnalysisModel;
   embeddingClient?: EmbeddingClient;
+  resumeToolClient?: ResumeToolClient;
+  resumeModel?: ResumeTailoringModel;
 };
 
 export type { PrismaClient };
@@ -41,5 +49,11 @@ export function createApp(options?: CreateAppOptions) {
   app.use(createProfileRouter(options?.embeddingClient));
   app.use(createResumeRouter());
   app.use(createJobsRouter(options?.jobAnalysisModel));
+  app.use(
+    createTailoredResumeRouter({
+      resumeToolClient: options?.resumeToolClient,
+      resumeModel: options?.resumeModel,
+    }),
+  );
   return app;
 }

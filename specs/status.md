@@ -2,7 +2,7 @@
 
 ## Repository
 
-Phase 12 is complete on branch `phase/12-embeddings-search`. Phase 13 is next.
+Phase 13 is complete on branch `phase/13-tailored-resume-workflow`. Phase 14 is next.
 
 ## Phases
 
@@ -18,8 +18,8 @@ Phase 12 is complete on branch `phase/12-embeddings-search`. Phase 13 is next.
 - 10 — Job analysis — Complete
 - 11 — MCP exact tools — Complete
 - 12 — Embeddings and candidate search — Complete
-- 13 — Tailored resume workflow — Next
-- 14 — Tailored resume UI — Not started
+- 13 — Tailored resume workflow — Complete
+- 14 — Tailored resume UI — Next
 - 15 — Interview plan — Not started
 - 16 — Interview question generation — Not started
 - 17 — Answer evaluation — Not started
