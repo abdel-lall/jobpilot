@@ -2,7 +2,7 @@
 
 ## Repository
 
-Phase 14 is complete on branch `phase/14-tailored-resume-ui`. Phase 15 is next.
+Phase 15 is complete on branch `phase/15-interview-plan`. Phase 16 is next.
 
 ## Phases
 
@@ -20,7 +20,7 @@ Phase 14 is complete on branch `phase/14-tailored-resume-ui`. Phase 15 is next.
 - 12 — Embeddings and candidate search — Complete
 - 13 — Tailored resume workflow — Complete
 - 14 — Tailored resume UI — Complete
-- 15 — Interview plan — Next
-- 16 — Interview question generation — Not started
+- 15 — Interview plan — Complete
+- 16 — Interview question generation — Next
 - 17 — Answer evaluation — Not started
 - 18 — Retakes and readiness — Not started

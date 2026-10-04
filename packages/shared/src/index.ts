@@ -49,6 +49,15 @@ export { resumeFileSchema, type ResumeFile } from "./resume-file.js";
 export { jobAnalysisSchema, type JobAnalysis } from "./job-analysis.js";
 
 export {
+  interviewPlanCategorySchema,
+  interviewPlanModelOutputSchema,
+  interviewPlanSchema,
+  type InterviewPlan,
+  type InterviewPlanCategory,
+  type InterviewPlanModelOutput,
+} from "./interview-plan.js";
+
+export {
   createJobBodySchema,
   jobSchema,
   jobStatusSchema,

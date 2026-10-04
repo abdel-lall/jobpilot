@@ -26,3 +26,10 @@ export {
   type ResumeToolClient,
   type ResumeToolResults,
 } from "./tailored-resume.js";
+export {
+  createGeminiInterviewPlanModel,
+  createStubInterviewPlanModel,
+  planInterview,
+  type InterviewPlanModel,
+  type InterviewPlanModelInput,
+} from "./interview-plan.js";

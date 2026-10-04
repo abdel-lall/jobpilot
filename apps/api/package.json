@@ -10,7 +10,8 @@
     "test:profile": "vitest run --config vitest.profile.config.ts",
     "test:resumes": "vitest run --config vitest.resumes.config.ts",
     "test:jobs": "vitest run --config vitest.jobs.config.ts",
-    "test:tailored-resume": "vitest run --config vitest.tailored-resume.config.ts"
+    "test:tailored-resume": "vitest run --config vitest.tailored-resume.config.ts",
+    "test:interview-plan": "vitest run --config vitest.interview-plan.config.ts"
   },
   "dependencies": {
     "@jobpilot/ai": "workspace:*",

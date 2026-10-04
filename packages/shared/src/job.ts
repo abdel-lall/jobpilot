@@ -28,7 +28,7 @@ export const jobStatusSchema = z
   .object({
     analysisCurrent: z.boolean(),
     tailoredResumePresent: z.boolean(),
-    interviewPlanPresent: z.literal(false),
+    interviewPlanPresent: z.boolean(),
     latestOverallScore: z.null(),
     readinessBadge: z.null(),
   })
