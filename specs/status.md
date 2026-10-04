@@ -2,7 +2,7 @@
 
 ## Repository
 
-Phase 13 is complete on branch `phase/13-tailored-resume-workflow`. Phase 14 is next.
+Phase 14 is complete on branch `phase/14-tailored-resume-ui`. Phase 15 is next.
 
 ## Phases
 
@@ -19,8 +19,8 @@ Phase 13 is complete on branch `phase/13-tailored-resume-workflow`. Phase 14 is 
 - 11 — MCP exact tools — Complete
 - 12 — Embeddings and candidate search — Complete
 - 13 — Tailored resume workflow — Complete
-- 14 — Tailored resume UI — Next
-- 15 — Interview plan — Not started
+- 14 — Tailored resume UI — Complete
+- 15 — Interview plan — Next
 - 16 — Interview question generation — Not started
 - 17 — Answer evaluation — Not started
 - 18 — Retakes and readiness — Not started
