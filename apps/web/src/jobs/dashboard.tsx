@@ -45,7 +45,7 @@ function requireToken(accessToken: string | null): string {
   return accessToken;
 }
 
-function notAvailable(value: false | null): "Not available" {
+function notAvailable(value: boolean | null): "Not available" {
   return value === false || value === null ? "Not available" : "Not available";
 }
 

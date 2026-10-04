@@ -27,7 +27,7 @@ function hasAtLeastOneField(body: object): boolean {
 export const jobStatusSchema = z
   .object({
     analysisCurrent: z.boolean(),
-    tailoredResumePresent: z.literal(false),
+    tailoredResumePresent: z.boolean(),
     interviewPlanPresent: z.literal(false),
     latestOverallScore: z.null(),
     readinessBadge: z.null(),
