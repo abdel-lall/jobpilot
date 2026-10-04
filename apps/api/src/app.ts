@@ -1,6 +1,7 @@
 import type {
   EmbeddingClient,
   InterviewPlanModel,
+  InterviewQuestionModel,
   JobAnalysisModel,
   ResumeTailoringModel,
   ResumeToolClient,
@@ -15,6 +16,7 @@ import { createResumeRouter } from "./routes/resumes.js";
 import { createJobsRouter } from "./routes/jobs.js";
 import { createTailoredResumeRouter } from "./routes/tailored-resume.js";
 import { createInterviewPlanRouter } from "./routes/interview-plan.js";
+import { createInterviewAttemptRouter } from "./routes/interview-attempt.js";
 
 export type CreateAppOptions = AuthServiceOptions & {
   jobAnalysisModel?: JobAnalysisModel;
@@ -22,6 +24,7 @@ export type CreateAppOptions = AuthServiceOptions & {
   resumeToolClient?: ResumeToolClient;
   resumeModel?: ResumeTailoringModel;
   interviewPlanModel?: InterviewPlanModel;
+  interviewQuestionModel?: InterviewQuestionModel;
 };
 
 export type { PrismaClient };
@@ -61,6 +64,11 @@ export function createApp(options?: CreateAppOptions) {
   app.use(
     createInterviewPlanRouter({
       interviewPlanModel: options?.interviewPlanModel,
+    }),
+  );
+  app.use(
+    createInterviewAttemptRouter({
+      interviewQuestionModel: options?.interviewQuestionModel,
     }),
   );
   return app;
