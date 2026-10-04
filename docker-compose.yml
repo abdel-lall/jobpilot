@@ -27,6 +27,7 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-stub}
       RESUME_MODEL: ${RESUME_MODEL:-stub}
       INTERVIEW_PLAN_MODEL: ${INTERVIEW_PLAN_MODEL:-stub}
+      INTERVIEW_QUESTION_MODEL: ${INTERVIEW_QUESTION_MODEL:-stub}
       MCP_URL: http://portfolio-mcp:3010/mcp
       MCP_SHARED_SECRET: ${MCP_SHARED_SECRET:-dev-only-change-me}
       DATABASE_URL: postgresql://postgres:jobpilot@postgres:5432/postgres

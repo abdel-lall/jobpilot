@@ -30,6 +30,8 @@ import {
   requestErrorMessage,
   updateJob,
 } from "@/jobs/requests";
+import { interviewAttemptQueryKey } from "@/jobs/interview-attempt";
+import { InterviewAttemptPanel } from "@/jobs/interview-attempt-panel";
 import { InterviewPlanPanel } from "@/jobs/interview-plan-panel";
 import { interviewPlanQueryKey } from "@/jobs/interview-plan";
 import { tailoredResumeQueryKey } from "@/jobs/tailored-resume";
@@ -41,6 +43,18 @@ type DashboardProps = {
 };
 
 type Runner = (action: () => Promise<void>) => Promise<void>;
+
+type OpenPanelKind = "resume" | "plan" | "attempt";
+
+function openPanelQueryKey(kind: OpenPanelKind, userId: string, jobId: string) {
+  if (kind === "resume") {
+    return tailoredResumeQueryKey(userId, jobId);
+  }
+  if (kind === "plan") {
+    return interviewPlanQueryKey(userId, jobId);
+  }
+  return interviewAttemptQueryKey(userId, jobId);
+}
 
 function requireToken(accessToken: string | null): string {
   if (accessToken === null || accessToken.length === 0) {
@@ -257,11 +271,13 @@ function JobRow({
   editing,
   resumeOpen,
   planOpen,
+  attemptOpen,
   run,
   onEdit,
   onCancel,
   onOpenResume,
   onOpenPlan,
+  onOpenAttempt,
   onClose,
   onChanged,
   onPanelRefetch,
@@ -272,11 +288,13 @@ function JobRow({
   editing: boolean;
   resumeOpen: boolean;
   planOpen: boolean;
+  attemptOpen: boolean;
   run: Runner;
   onEdit: () => void;
   onCancel: () => void;
   onOpenResume: () => void;
   onOpenPlan: () => void;
+  onOpenAttempt: () => void;
   onClose: () => void;
   onChanged: () => Promise<unknown>;
   onPanelRefetch: () => Promise<unknown>;
@@ -350,6 +368,18 @@ function JobRow({
           Interview plan
         </Button>
       )}
+      {attemptOpen ? (
+        <InterviewAttemptPanel
+          userId={userId}
+          jobId={job.id}
+          accessToken={accessToken}
+          onClose={onClose}
+        />
+      ) : (
+        <Button type="button" data-testid="open-interview-attempt" onClick={onOpenAttempt}>
+          Interview attempt
+        </Button>
+      )}
       {editing ? (
         <EditJobForm
           accessToken={accessToken}
@@ -374,7 +404,7 @@ function JobRow({
             if (editing) {
               onCancel();
             }
-            if (resumeOpen || planOpen) {
+            if (resumeOpen || planOpen || attemptOpen) {
               onClose();
             }
             await onChanged();
@@ -393,9 +423,7 @@ export function Dashboard({ userId, accessToken }: DashboardProps) {
   accessTokenRef.current = accessToken;
   const [requestError, setRequestError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [openPanel, setOpenPanel] = useState<{ jobId: string; kind: "resume" | "plan" } | null>(
-    null,
-  );
+  const [openPanel, setOpenPanel] = useState<{ jobId: string; kind: OpenPanelKind } | null>(null);
   const openPanelRef = useRef(openPanel);
   openPanelRef.current = openPanel;
 
@@ -454,11 +482,13 @@ export function Dashboard({ userId, accessToken }: DashboardProps) {
                   editing={editingId === job.id}
                   resumeOpen={openPanel?.jobId === job.id && openPanel.kind === "resume"}
                   planOpen={openPanel?.jobId === job.id && openPanel.kind === "plan"}
+                  attemptOpen={openPanel?.jobId === job.id && openPanel.kind === "attempt"}
                   run={run}
                   onEdit={() => setEditingId(job.id)}
                   onCancel={() => setEditingId(null)}
                   onOpenResume={() => setOpenPanel({ jobId: job.id, kind: "resume" })}
                   onOpenPlan={() => setOpenPanel({ jobId: job.id, kind: "plan" })}
+                  onOpenAttempt={() => setOpenPanel({ jobId: job.id, kind: "attempt" })}
                   onClose={() => setOpenPanel(null)}
                   onChanged={refetch}
                   onPanelRefetch={() => {
@@ -466,11 +496,9 @@ export function Dashboard({ userId, accessToken }: DashboardProps) {
                     if (open === null || open.jobId !== job.id) {
                       return Promise.resolve();
                     }
-                    const queryKey =
-                      open.kind === "resume"
-                        ? tailoredResumeQueryKey(userId, job.id)
-                        : interviewPlanQueryKey(userId, job.id);
-                    return queryClient.refetchQueries({ queryKey });
+                    return queryClient.refetchQueries({
+                      queryKey: openPanelQueryKey(open.kind, userId, job.id),
+                    });
                   }}
                 />
               ))}

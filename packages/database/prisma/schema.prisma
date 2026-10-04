@@ -133,11 +133,17 @@ model Job {
   jobUrl         String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
-  analysis       JobAnalysis?
-  tailoredResume TailoredResume?
-  interviewPlan  InterviewPlan?
+  analysis            JobAnalysis?
+  tailoredResume      TailoredResume?
+  interviewPlan       InterviewPlan?
+  interviewAttempts   InterviewAttempt[]
+  interviewQuestions  InterviewQuestion[]
 
   @@index([userId])
+}
+
+enum InterviewAttemptStatus {
+  in_progress
 }
 
 model TailoredResume {
@@ -156,6 +162,37 @@ model InterviewPlan {
   document  Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model InterviewAttempt {
+  id        String                 @id @default(uuid())
+  jobId     String
+  job       Job                    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  status    InterviewAttemptStatus
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
+  questions InterviewQuestion[]
+}
+
+model InterviewQuestion {
+  id               String           @id @default(uuid())
+  attemptId        String
+  attempt          InterviewAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  jobId            String
+  job              Job              @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  position         Int
+  text             String
+  normalizedText   String
+  category         String
+  expectedConcepts Json
+  rubric           String
+  answer           String?
+  feedback         String?
+  score            Int?
+  createdAt        DateTime         @default(now())
+
+  @@unique([attemptId, position])
+  @@unique([jobId, normalizedText])
 }
 
 model JobAnalysis {

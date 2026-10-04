@@ -33,3 +33,12 @@ export {
   type InterviewPlanModel,
   type InterviewPlanModelInput,
 } from "./interview-plan.js";
+export {
+  createGeminiInterviewQuestionModel,
+  createStubInterviewQuestionModel,
+  generateInterviewQuestions,
+  interviewQuestionCounts,
+  type GeneratedInterviewQuestion,
+  type InterviewQuestionModel,
+  type InterviewQuestionModelInput,
+} from "./interview-questions.js";

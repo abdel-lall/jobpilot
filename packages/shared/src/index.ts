@@ -58,6 +58,19 @@ export {
 } from "./interview-plan.js";
 
 export {
+  interviewAttemptSchema,
+  interviewQuestionModelItemSchema,
+  interviewQuestionModelOutputSchema,
+  interviewQuestionSchema,
+  interviewQuestionStructuredSchema,
+  normalizeQuestionText,
+  type InterviewAttempt,
+  type InterviewQuestion,
+  type InterviewQuestionModelItem,
+  type InterviewQuestionModelOutput,
+} from "./interview-questions.js";
+
+export {
   createJobBodySchema,
   jobSchema,
   jobStatusSchema,
