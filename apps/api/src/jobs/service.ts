@@ -13,14 +13,24 @@ import {
   type UpdateJobBody,
 } from "@jobpilot/shared";
 import { getPrisma } from "../db.js";
+import { assessInterviewReadiness } from "../interview-attempt/readiness.js";
 import { JobError } from "./errors.js";
 
 const listOrder = [{ createdAt: "asc" as const }, { id: "asc" as const }];
-const withAnalysis = { analysis: true, tailoredResume: true, interviewPlan: true } as const;
-
-const emptyCompanionStatus = {
-  latestOverallScore: null,
-  readinessBadge: null,
+const withAnalysis = {
+  analysis: true,
+  tailoredResume: true,
+  interviewPlan: true,
+  interviewAttempts: {
+    include: {
+      questions: {
+        select: {
+          score: true,
+          category: true,
+        },
+      },
+    },
+  },
 } as const;
 
 type StoredAnalysis = {
@@ -32,6 +42,13 @@ type StoredAnalysis = {
   technologies: unknown;
   interviewTopics: unknown;
   keywords: unknown;
+};
+
+type StoredAttempt = {
+  id: string;
+  status: "in_progress" | "completed";
+  createdAt: Date;
+  questions: { score: number | null; category: string }[];
 };
 
 type StoredJob = {
@@ -47,7 +64,40 @@ type StoredJob = {
   analysis: StoredAnalysis | null;
   tailoredResume: { id: string } | null;
   interviewPlan: { id: string } | null;
+  interviewAttempts: StoredAttempt[];
 };
+
+function isLaterCompleted(candidate: StoredAttempt, current: StoredAttempt): boolean {
+  const createdAt = candidate.createdAt.getTime() - current.createdAt.getTime();
+  if (createdAt !== 0) {
+    return createdAt > 0;
+  }
+  return candidate.id > current.id;
+}
+
+function readinessStatus(attempts: readonly StoredAttempt[]): {
+  latestOverallScore: number | null;
+  readinessBadge: "Interview Ready" | null;
+} {
+  const completed = attempts.filter((attempt) => attempt.status === "completed");
+  const latest = completed.reduce<StoredAttempt | undefined>((best, attempt) => {
+    if (best === undefined || isLaterCompleted(attempt, best)) {
+      return attempt;
+    }
+    return best;
+  }, undefined);
+  if (latest === undefined) {
+    return { latestOverallScore: null, readinessBadge: null };
+  }
+  const questions = latest.questions.flatMap((question) =>
+    question.score === null ? [] : [{ score: question.score, category: question.category }],
+  );
+  const readiness = assessInterviewReadiness(questions);
+  return {
+    latestOverallScore: readiness.overallScore,
+    readinessBadge: readiness.passed ? "Interview Ready" : null,
+  };
+}
 
 function analysisColumns(description: string, analysis: JobAnalysis) {
   return {
@@ -122,7 +172,7 @@ function toJob(record: StoredJob): Job {
         record.analysis !== null && record.analysis.analyzedDescription === record.jobDescription,
       tailoredResumePresent: record.tailoredResume !== null,
       interviewPlanPresent: record.interviewPlan !== null,
-      ...emptyCompanionStatus,
+      ...readinessStatus(record.interviewAttempts),
     },
     analysis,
     createdAt: record.createdAt.toISOString(),

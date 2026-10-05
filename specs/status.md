@@ -2,7 +2,7 @@
 
 ## Repository
 
-Phase 17 is complete on branch `phase/17-answer-evaluation`. Phase 18 is next.
+Phase 18 is complete on branch `phase/18-retakes-readiness`. The roadmap has no later phase.
 
 ## Phases
 
@@ -23,4 +23,4 @@ Phase 17 is complete on branch `phase/17-answer-evaluation`. Phase 18 is next.
 - 15 — Interview plan — Complete
 - 16 — Interview question generation — Complete
 - 17 — Answer evaluation — Complete
-- 18 — Retakes and readiness — Next
+- 18 — Retakes and readiness — Complete
