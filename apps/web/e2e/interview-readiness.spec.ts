@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@jobpilot/database";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openAuthForm } from "./open-auth-form";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -46,6 +47,7 @@ async function waitForOk(url: string): Promise<void> {
 
 async function fillAuth(page: Page, formName: string, email: string): Promise<void> {
   const form = page.getByRole("form", { name: formName });
+  await openAuthForm(page, formName);
   await form.getByLabel("Email").fill(email);
   await form.getByLabel("Password").fill(password);
 }

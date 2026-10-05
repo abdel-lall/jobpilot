@@ -31,7 +31,7 @@ type SessionContextValue = {
   accessToken: string | null;
   notice: string | null;
   error: string | null;
-  register: (input: RegisterBody) => Promise<void>;
+  register: (input: RegisterBody) => Promise<boolean>;
   login: (input: LoginBody) => Promise<void>;
   logout: () => Promise<void>;
 };
@@ -132,7 +132,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const register = useCallback(async (input: RegisterBody) => {
+  const register = useCallback(async (input: RegisterBody): Promise<boolean> => {
     setSession((current) => ({
       ...current,
       error: null,
@@ -148,18 +148,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           ...signedOutState,
           notice: "Account created. You can log in.",
         });
-        return;
+        return true;
       }
       const message = await readErrorMessage(response);
       setSession({
         ...signedOutState,
         error: message,
       });
+      return false;
     } catch {
       setSession({
         ...signedOutState,
         error: "Request failed",
       });
+      return false;
     }
   }, []);
 
