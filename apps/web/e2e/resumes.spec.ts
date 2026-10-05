@@ -129,6 +129,7 @@ test("uploads a resume after the empty list, then deletes it", async ({ page }) 
   openGate(listGate);
   await expect(page.getByTestId("profile-resumes-empty")).toHaveText("No resumes yet.");
 
+  await resumes.getByRole("button", { name: "Add resume", exact: true }).click();
   await resumes.locator('input[type="file"]').setInputFiles({
     name: "phase7-resume.pdf",
     mimeType: "application/pdf",

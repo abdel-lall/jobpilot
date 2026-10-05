@@ -18,11 +18,13 @@ const createdEmails: string[] = [];
 const password = "password1";
 
 const profileHeadings = [
+  "Profile",
+  "Work Experience",
   "Skills",
-  "Education",
-  "Work experience",
-  "Projects",
   "Certifications",
+  "Education",
+  "Projects",
+  "Resumes",
 ] as const;
 
 type RequestGate = {
@@ -196,14 +198,16 @@ test("creates, reloads, edits, clears the URL, and deletes a job", async ({ page
   await expect(page.getByTestId("nav-dashboard")).toHaveText("Dashboard");
   await expectProfileView(page);
 
+  await page.getByRole("button", { name: "Add skill", exact: true }).click();
   const skillForm = page.getByRole("form", { name: "Add skill" });
   await skillForm.getByLabel("Name").fill("TypeScript");
-  await skillForm.getByRole("button", { name: "Add skill", exact: true }).click();
+  await skillForm.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByTestId("profile-skills").getByText("TypeScript", { exact: true })).toBeVisible();
   expect(jobsGets).toBe(0);
 
   await page.getByTestId("nav-dashboard").click();
   await expect(page.getByTestId("dashboard")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toHaveCount(1);
   await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
   await expect(page.getByTestId("profile-skills")).toHaveCount(0);
   await expect(page.getByTestId("profile-resumes")).toHaveCount(0);

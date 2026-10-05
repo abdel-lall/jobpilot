@@ -19,11 +19,18 @@ import {
   type WorkExperience,
 } from "@jobpilot/shared";
 import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
-import { useCallback, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useForm, type Control, type FieldPath, type FieldValues } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { ResumesSection } from "@/profile/resumes";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  AddRecordButton,
+  DeleteIcon,
+  EditIcon,
+  RecordIconButton,
+  profileCardClass,
+  savedLabelClass,
+} from "@/profile/record-actions";
 import {
   Form,
   FormControl,
@@ -217,8 +224,8 @@ function RootMessage({ message }: { message: string | undefined }) {
 function TextValue({ label, value }: { label: string; value: string }) {
   return (
     <p>
-      <span className="text-muted-foreground">{label} </span>
-      <span>{value}</span>
+      <span className={savedLabelClass}>{label} </span>
+      <span className="text-[var(--jp-ink)]">{value}</span>
     </p>
   );
 }
@@ -226,10 +233,10 @@ function TextValue({ label, value }: { label: string; value: string }) {
 function LinesValue({ label, values }: { label: string; values: string[] }) {
   return (
     <div>
-      <p className="text-muted-foreground">{label}</p>
+      <p className={savedLabelClass}>{label}</p>
       {values.map((value, index) => (
         <p key={`${index}-${value}`}>
-          <span>{value}</span>
+          <span className="text-[var(--jp-ink)]">{value}</span>
         </p>
       ))}
     </div>
@@ -245,6 +252,9 @@ function ProfileSection({
   requestError,
   children,
   createForm,
+  adding,
+  onAdd,
+  addName,
 }: {
   testId: string;
   title: string;
@@ -254,29 +264,28 @@ function ProfileSection({
   requestError: string | null;
   children: ReactNode;
   createForm: ReactNode;
+  adding: boolean;
+  onAdd: () => void;
+  addName: string;
 }) {
   const data = query.data;
   const showLoading = data === undefined && query.isFetching;
-  const showEmpty = data !== undefined && data.length === 0;
+  const showEmpty = !adding && data !== undefined && data.length === 0;
+  const showRecords = !adding && data !== undefined && data.length > 0;
   const listError = query.isError ? requestErrorMessage(query.error) : null;
 
   return (
-    <section data-testid={testId}>
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            <h2>{title}</h2>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4">
-          {showLoading ? <p data-testid={`${testId}-loading`}>{loadingText}</p> : null}
-          {listError !== null ? <p role="alert">{listError}</p> : null}
-          {showEmpty ? <p data-testid={`${testId}-empty`}>{emptyText}</p> : null}
-          {data !== undefined && data.length > 0 ? <ul className="grid gap-4">{children}</ul> : null}
-          {requestError !== null ? <p role="alert">{requestError}</p> : null}
-          {createForm}
-        </CardContent>
-      </Card>
+    <section data-testid={testId} className={profileCardClass()}>
+      <h2 className="text-lg font-semibold text-[var(--jp-ink)]">{title}</h2>
+      <div className="grid gap-4">
+        {showLoading ? <p data-testid={`${testId}-loading`}>{loadingText}</p> : null}
+        {listError !== null ? <p role="alert">{listError}</p> : null}
+        {showEmpty ? <p data-testid={`${testId}-empty`}>{emptyText}</p> : null}
+        {showRecords ? <ul className="grid gap-4">{children}</ul> : null}
+        {requestError !== null ? <p role="alert">{requestError}</p> : null}
+        {adding ? createForm : null}
+        {!adding && !showLoading ? <AddRecordButton label={addName} onClick={onAdd} /> : null}
+      </div>
     </section>
   );
 }
@@ -316,10 +325,12 @@ function formProps(label: string, onSubmit: (event: FormEvent<HTMLFormElement>) 
 function CreateSkillForm({
   accessToken,
   run,
+  onCancel,
   onCreated,
 }: {
   accessToken: string | null;
   run: Runner;
+  onCancel: () => void;
   onCreated: () => Promise<unknown>;
 }) {
   const form = useForm<CreateSkillBody>({
@@ -342,7 +353,7 @@ function CreateSkillForm({
         )}
       >
         <TextField control={form.control} name="name" label="Name" />
-        <SubmitRow label="Add skill" submitting={form.formState.isSubmitting} />
+        <SubmitRow label="Save" submitting={form.formState.isSubmitting} onCancel={onCancel} />
       </form>
     </Form>
   );
@@ -392,6 +403,7 @@ function SkillsSection({ userId, accessToken }: SectionProps) {
   const refetch = useRefetch(profilePaths.skills, userId);
   const { requestError, run } = useRequestError();
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
 
   return (
     <ProfileSection
@@ -401,11 +413,58 @@ function SkillsSection({ userId, accessToken }: SectionProps) {
       emptyText="No skills yet."
       query={query}
       requestError={requestError}
-      createForm={<CreateSkillForm accessToken={accessToken} run={run} onCreated={refetch} />}
+      adding={adding}
+      addName="Add skill"
+      onAdd={() => {
+        setEditingId(null);
+        setAdding(true);
+      }}
+      createForm={
+        <CreateSkillForm
+          accessToken={accessToken}
+          run={run}
+          onCancel={() => setAdding(false)}
+          onCreated={async () => {
+            await refetch();
+            setAdding(false);
+          }}
+        />
+      }
     >
       {query.data?.map((skill) => (
         <li key={skill.id} className="grid gap-3">
-          <TextValue label="Name" value={skill.name} />
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 break-words">
+              <TextValue label="Name" value={skill.name} />
+            </div>
+            <div className="flex shrink-0 gap-1">
+              {editingId === skill.id ? null : (
+                <RecordIconButton
+                  label="Edit skill"
+                  onClick={() => {
+                    setAdding(false);
+                    setEditingId(skill.id);
+                  }}
+                >
+                  <EditIcon />
+                </RecordIconButton>
+              )}
+              <RecordIconButton
+                label="Delete skill"
+                onClick={() => {
+                  void run(async () => {
+                    await deleteSkill(requireToken(accessToken), skill.id);
+                    if (editingId === skill.id) {
+                      setEditingId(null);
+                    }
+                    await refetch();
+                  });
+                }}
+              >
+                <DeleteIcon />
+              </RecordIconButton>
+            </div>
+          </div>
           {editingId === skill.id ? (
             <EditSkillForm
               accessToken={accessToken}
@@ -414,25 +473,7 @@ function SkillsSection({ userId, accessToken }: SectionProps) {
               onCancel={() => setEditingId(null)}
               onSaved={refetch}
             />
-          ) : (
-            <Button type="button" onClick={() => setEditingId(skill.id)}>
-              Edit skill
-            </Button>
-          )}
-          <Button
-            type="button"
-            onClick={() => {
-              void run(async () => {
-                await deleteSkill(requireToken(accessToken), skill.id);
-                if (editingId === skill.id) {
-                  setEditingId(null);
-                }
-                await refetch();
-              });
-            }}
-          >
-            Delete skill
-          </Button>
+          ) : null}
         </li>
       ))}
     </ProfileSection>
@@ -460,10 +501,12 @@ function EducationFields({ control }: { control: Control<EducationFormValues> })
 function CreateEducationForm({
   accessToken,
   run,
+  onCancel,
   onCreated,
 }: {
   accessToken: string | null;
   run: Runner;
+  onCancel: () => void;
   onCreated: () => Promise<unknown>;
 }) {
   const form = useForm<EducationFormValues, unknown, CreateEducationBody>({
@@ -487,7 +530,7 @@ function CreateEducationForm({
       >
         <EducationFields control={fieldControl(form.control)} />
         <RootMessage message={form.formState.errors.root?.message} />
-        <SubmitRow label="Add education" submitting={form.formState.isSubmitting} />
+        <SubmitRow label="Save" submitting={form.formState.isSubmitting} onCancel={onCancel} />
       </form>
     </Form>
   );
@@ -533,11 +576,49 @@ function EditEducationForm({
   );
 }
 
+function SavedRecord({
+  editing,
+  editLabel,
+  deleteLabel,
+  onEdit,
+  onDelete,
+  values,
+  editForm,
+}: {
+  editing: boolean;
+  editLabel: string;
+  deleteLabel: string;
+  onEdit: () => void;
+  onDelete: () => void;
+  values: ReactNode;
+  editForm: ReactNode;
+}) {
+  return (
+    <li className="grid gap-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="grid min-w-0 gap-3 break-words">{values}</div>
+        <div className="flex shrink-0 gap-1">
+          {editing ? null : (
+            <RecordIconButton label={editLabel} onClick={onEdit}>
+              <EditIcon />
+            </RecordIconButton>
+          )}
+          <RecordIconButton label={deleteLabel} onClick={onDelete}>
+            <DeleteIcon />
+          </RecordIconButton>
+        </div>
+      </div>
+      {editing ? editForm : null}
+    </li>
+  );
+}
+
 function EducationSection({ userId, accessToken }: SectionProps) {
   const query = useProfileQuery(profilePaths.education, userId, accessToken, listEducation);
   const refetch = useRefetch(profilePaths.education, userId);
   const { requestError, run } = useRequestError();
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
 
   return (
     <ProfileSection
@@ -547,16 +628,53 @@ function EducationSection({ userId, accessToken }: SectionProps) {
       emptyText="No education yet."
       query={query}
       requestError={requestError}
-      createForm={<CreateEducationForm accessToken={accessToken} run={run} onCreated={refetch} />}
+      adding={adding}
+      addName="Add education"
+      onAdd={() => {
+        setEditingId(null);
+        setAdding(true);
+      }}
+      createForm={
+        <CreateEducationForm
+          accessToken={accessToken}
+          run={run}
+          onCancel={() => setAdding(false)}
+          onCreated={async () => {
+            await refetch();
+            setAdding(false);
+          }}
+        />
+      }
     >
       {query.data?.map((record) => (
-        <li key={record.id} className="grid gap-3">
-          <TextValue label="Institution" value={record.institution} />
-          <TextValue label="Degree" value={record.degree} />
-          <TextValue label="Field of study" value={record.fieldOfStudy} />
-          <TextValue label="Start date" value={record.startDate} />
-          <TextValue label="End date" value={record.endDate ?? "Present"} />
-          {editingId === record.id ? (
+        <SavedRecord
+          key={record.id}
+          editing={editingId === record.id}
+          editLabel="Edit education"
+          deleteLabel="Delete education"
+          onEdit={() => {
+            setAdding(false);
+            setEditingId(record.id);
+          }}
+          onDelete={() => {
+            void run(async () => {
+              await deleteEducation(requireToken(accessToken), record.id);
+              if (editingId === record.id) {
+                setEditingId(null);
+              }
+              await refetch();
+            });
+          }}
+          values={
+            <>
+              <TextValue label="Institution" value={record.institution} />
+              <TextValue label="Degree" value={record.degree} />
+              <TextValue label="Field of study" value={record.fieldOfStudy} />
+              <TextValue label="Start date" value={record.startDate} />
+              <TextValue label="End date" value={record.endDate ?? "Present"} />
+            </>
+          }
+          editForm={
             <EditEducationForm
               accessToken={accessToken}
               record={record}
@@ -564,26 +682,8 @@ function EducationSection({ userId, accessToken }: SectionProps) {
               onCancel={() => setEditingId(null)}
               onSaved={refetch}
             />
-          ) : (
-            <Button type="button" onClick={() => setEditingId(record.id)}>
-              Edit education
-            </Button>
-          )}
-          <Button
-            type="button"
-            onClick={() => {
-              void run(async () => {
-                await deleteEducation(requireToken(accessToken), record.id);
-                if (editingId === record.id) {
-                  setEditingId(null);
-                }
-                await refetch();
-              });
-            }}
-          >
-            Delete education
-          </Button>
-        </li>
+          }
+        />
       ))}
     </ProfileSection>
   );
@@ -611,10 +711,12 @@ function ExperienceFields({ control }: { control: Control<ExperienceFormValues> 
 function CreateExperienceForm({
   accessToken,
   run,
+  onCancel,
   onCreated,
 }: {
   accessToken: string | null;
   run: Runner;
+  onCancel: () => void;
   onCreated: () => Promise<unknown>;
 }) {
   const form = useForm<ExperienceFormValues, unknown, CreateWorkExperienceBody>({
@@ -638,7 +740,7 @@ function CreateExperienceForm({
       >
         <ExperienceFields control={fieldControl(form.control)} />
         <RootMessage message={form.formState.errors.root?.message} />
-        <SubmitRow label="Add experience" submitting={form.formState.isSubmitting} />
+        <SubmitRow label="Save" submitting={form.formState.isSubmitting} onCancel={onCancel} />
       </form>
     </Form>
   );
@@ -689,26 +791,64 @@ function ExperienceSection({ userId, accessToken }: SectionProps) {
   const refetch = useRefetch(profilePaths.experience, userId);
   const { requestError, run } = useRequestError();
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
 
   return (
     <ProfileSection
       testId="profile-experience"
-      title="Work experience"
+      title="Work Experience"
       loadingText="Loading work experience…"
       emptyText="No work experience yet."
       query={query}
       requestError={requestError}
-      createForm={<CreateExperienceForm accessToken={accessToken} run={run} onCreated={refetch} />}
+      adding={adding}
+      addName="Add work experience"
+      onAdd={() => {
+        setEditingId(null);
+        setAdding(true);
+      }}
+      createForm={
+        <CreateExperienceForm
+          accessToken={accessToken}
+          run={run}
+          onCancel={() => setAdding(false)}
+          onCreated={async () => {
+            await refetch();
+            setAdding(false);
+          }}
+        />
+      }
     >
       {query.data?.map((record) => (
-        <li key={record.id} className="grid gap-3">
-          <TextValue label="Employer" value={record.employer} />
-          <TextValue label="Job title" value={record.jobTitle} />
-          <TextValue label="Start date" value={record.startDate} />
-          <TextValue label="End date" value={record.endDate ?? "Present"} />
-          <LinesValue label="Accomplishments" values={record.accomplishments} />
-          <LinesValue label="Technologies" values={record.technologies} />
-          {editingId === record.id ? (
+        <SavedRecord
+          key={record.id}
+          editing={editingId === record.id}
+          editLabel="Edit experience"
+          deleteLabel="Delete experience"
+          onEdit={() => {
+            setAdding(false);
+            setEditingId(record.id);
+          }}
+          onDelete={() => {
+            void run(async () => {
+              await deleteExperience(requireToken(accessToken), record.id);
+              if (editingId === record.id) {
+                setEditingId(null);
+              }
+              await refetch();
+            });
+          }}
+          values={
+            <>
+              <TextValue label="Employer" value={record.employer} />
+              <TextValue label="Job title" value={record.jobTitle} />
+              <TextValue label="Start date" value={record.startDate} />
+              <TextValue label="End date" value={record.endDate ?? "Present"} />
+              <LinesValue label="Accomplishments" values={record.accomplishments} />
+              <LinesValue label="Technologies" values={record.technologies} />
+            </>
+          }
+          editForm={
             <EditExperienceForm
               accessToken={accessToken}
               record={record}
@@ -716,26 +856,8 @@ function ExperienceSection({ userId, accessToken }: SectionProps) {
               onCancel={() => setEditingId(null)}
               onSaved={refetch}
             />
-          ) : (
-            <Button type="button" onClick={() => setEditingId(record.id)}>
-              Edit experience
-            </Button>
-          )}
-          <Button
-            type="button"
-            onClick={() => {
-              void run(async () => {
-                await deleteExperience(requireToken(accessToken), record.id);
-                if (editingId === record.id) {
-                  setEditingId(null);
-                }
-                await refetch();
-              });
-            }}
-          >
-            Delete experience
-          </Button>
-        </li>
+          }
+        />
       ))}
     </ProfileSection>
   );
@@ -764,10 +886,12 @@ function ProjectFields({ control }: { control: Control<ProjectFormValues> }) {
 function CreateProjectForm({
   accessToken,
   run,
+  onCancel,
   onCreated,
 }: {
   accessToken: string | null;
   run: Runner;
+  onCancel: () => void;
   onCreated: () => Promise<unknown>;
 }) {
   const form = useForm<ProjectFormValues, unknown, CreateProjectBody>({
@@ -791,7 +915,7 @@ function CreateProjectForm({
       >
         <ProjectFields control={fieldControl(form.control)} />
         <RootMessage message={form.formState.errors.root?.message} />
-        <SubmitRow label="Add project" submitting={form.formState.isSubmitting} />
+        <SubmitRow label="Save" submitting={form.formState.isSubmitting} onCancel={onCancel} />
       </form>
     </Form>
   );
@@ -842,6 +966,7 @@ function ProjectsSection({ userId, accessToken }: SectionProps) {
   const refetch = useRefetch(profilePaths.projects, userId);
   const { requestError, run } = useRequestError();
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
 
   return (
     <ProfileSection
@@ -851,18 +976,55 @@ function ProjectsSection({ userId, accessToken }: SectionProps) {
       emptyText="No projects yet."
       query={query}
       requestError={requestError}
-      createForm={<CreateProjectForm accessToken={accessToken} run={run} onCreated={refetch} />}
+      adding={adding}
+      addName="Add project"
+      onAdd={() => {
+        setEditingId(null);
+        setAdding(true);
+      }}
+      createForm={
+        <CreateProjectForm
+          accessToken={accessToken}
+          run={run}
+          onCancel={() => setAdding(false)}
+          onCreated={async () => {
+            await refetch();
+            setAdding(false);
+          }}
+        />
+      }
     >
       {query.data?.map((record) => (
-        <li key={record.id} className="grid gap-3">
-          <TextValue label="Name" value={record.name} />
-          <TextValue label="Description" value={record.description} />
-          {record.url !== null ? <TextValue label="URL" value={record.url} /> : null}
-          {record.startDate !== null ? <TextValue label="Start date" value={record.startDate} /> : null}
-          <TextValue label="End date" value={record.endDate ?? "Present"} />
-          <LinesValue label="Accomplishments" values={record.accomplishments} />
-          <LinesValue label="Technologies" values={record.technologies} />
-          {editingId === record.id ? (
+        <SavedRecord
+          key={record.id}
+          editing={editingId === record.id}
+          editLabel="Edit project"
+          deleteLabel="Delete project"
+          onEdit={() => {
+            setAdding(false);
+            setEditingId(record.id);
+          }}
+          onDelete={() => {
+            void run(async () => {
+              await deleteProject(requireToken(accessToken), record.id);
+              if (editingId === record.id) {
+                setEditingId(null);
+              }
+              await refetch();
+            });
+          }}
+          values={
+            <>
+              <TextValue label="Name" value={record.name} />
+              <TextValue label="Description" value={record.description} />
+              {record.url !== null ? <TextValue label="URL" value={record.url} /> : null}
+              {record.startDate !== null ? <TextValue label="Start date" value={record.startDate} /> : null}
+              <TextValue label="End date" value={record.endDate ?? "Present"} />
+              <LinesValue label="Accomplishments" values={record.accomplishments} />
+              <LinesValue label="Technologies" values={record.technologies} />
+            </>
+          }
+          editForm={
             <EditProjectForm
               accessToken={accessToken}
               record={record}
@@ -870,26 +1032,8 @@ function ProjectsSection({ userId, accessToken }: SectionProps) {
               onCancel={() => setEditingId(null)}
               onSaved={refetch}
             />
-          ) : (
-            <Button type="button" onClick={() => setEditingId(record.id)}>
-              Edit project
-            </Button>
-          )}
-          <Button
-            type="button"
-            onClick={() => {
-              void run(async () => {
-                await deleteProject(requireToken(accessToken), record.id);
-                if (editingId === record.id) {
-                  setEditingId(null);
-                }
-                await refetch();
-              });
-            }}
-          >
-            Delete project
-          </Button>
-        </li>
+          }
+        />
       ))}
     </ProfileSection>
   );
@@ -915,10 +1059,12 @@ function CertificationFields({ control }: { control: Control<CertificationFormVa
 function CreateCertificationForm({
   accessToken,
   run,
+  onCancel,
   onCreated,
 }: {
   accessToken: string | null;
   run: Runner;
+  onCancel: () => void;
   onCreated: () => Promise<unknown>;
 }) {
   const form = useForm<CertificationFormValues, unknown, CreateCertificationBody>({
@@ -942,7 +1088,7 @@ function CreateCertificationForm({
       >
         <CertificationFields control={fieldControl(form.control)} />
         <RootMessage message={form.formState.errors.root?.message} />
-        <SubmitRow label="Add certification" submitting={form.formState.isSubmitting} />
+        <SubmitRow label="Save" submitting={form.formState.isSubmitting} onCancel={onCancel} />
       </form>
     </Form>
   );
@@ -997,6 +1143,7 @@ function CertificationsSection({ userId, accessToken }: SectionProps) {
   const refetch = useRefetch(profilePaths.certifications, userId);
   const { requestError, run } = useRequestError();
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
 
   return (
     <ProfileSection
@@ -1006,17 +1153,52 @@ function CertificationsSection({ userId, accessToken }: SectionProps) {
       emptyText="No certifications yet."
       query={query}
       requestError={requestError}
+      adding={adding}
+      addName="Add certification"
+      onAdd={() => {
+        setEditingId(null);
+        setAdding(true);
+      }}
       createForm={
-        <CreateCertificationForm accessToken={accessToken} run={run} onCreated={refetch} />
+        <CreateCertificationForm
+          accessToken={accessToken}
+          run={run}
+          onCancel={() => setAdding(false)}
+          onCreated={async () => {
+            await refetch();
+            setAdding(false);
+          }}
+        />
       }
     >
       {query.data?.map((record) => (
-        <li key={record.id} className="grid gap-3">
-          <TextValue label="Name" value={record.name} />
-          <TextValue label="Issuer" value={record.issuer} />
-          <TextValue label="Issued on" value={record.issuedOn} />
-          <TextValue label="Expires on" value={record.expiresOn ?? "Present"} />
-          {editingId === record.id ? (
+        <SavedRecord
+          key={record.id}
+          editing={editingId === record.id}
+          editLabel="Edit certification"
+          deleteLabel="Delete certification"
+          onEdit={() => {
+            setAdding(false);
+            setEditingId(record.id);
+          }}
+          onDelete={() => {
+            void run(async () => {
+              await deleteCertification(requireToken(accessToken), record.id);
+              if (editingId === record.id) {
+                setEditingId(null);
+              }
+              await refetch();
+            });
+          }}
+          values={
+            <>
+              <TextValue label="Name" value={record.name} />
+              <TextValue label="Issuer" value={record.issuer} />
+              <TextValue label="Issued on" value={record.issuedOn} />
+              <TextValue label="Expires on" value={record.expiresOn ?? "Present"} />
+            </>
+          }
+          editForm={
             <EditCertificationForm
               accessToken={accessToken}
               record={record}
@@ -1024,40 +1206,65 @@ function CertificationsSection({ userId, accessToken }: SectionProps) {
               onCancel={() => setEditingId(null)}
               onSaved={refetch}
             />
-          ) : (
-            <Button type="button" onClick={() => setEditingId(record.id)}>
-              Edit certification
-            </Button>
-          )}
-          <Button
-            type="button"
-            onClick={() => {
-              void run(async () => {
-                await deleteCertification(requireToken(accessToken), record.id);
-                if (editingId === record.id) {
-                  setEditingId(null);
-                }
-                await refetch();
-              });
-            }}
-          >
-            Delete certification
-          </Button>
-        </li>
+          }
+        />
       ))}
     </ProfileSection>
   );
 }
 
+const wideProfileQuery = "(min-width: 1024px)";
+
+function useWideProfile(): boolean {
+  const [wide, setWide] = useState(() => window.matchMedia(wideProfileQuery).matches);
+  useEffect(() => {
+    const media = window.matchMedia(wideProfileQuery);
+    const onChange = () => {
+      setWide(media.matches);
+    };
+    onChange();
+    media.addEventListener("change", onChange);
+    return () => {
+      media.removeEventListener("change", onChange);
+    };
+  }, []);
+  return wide;
+}
+
 export function ProfileSections({ userId, accessToken }: SectionProps) {
+  const wide = useWideProfile();
+  const experience = <ExperienceSection userId={userId} accessToken={accessToken} />;
+  const education = <EducationSection userId={userId} accessToken={accessToken} />;
+  const skills = <SkillsSection userId={userId} accessToken={accessToken} />;
+  const projects = <ProjectsSection userId={userId} accessToken={accessToken} />;
+  const certifications = <CertificationsSection userId={userId} accessToken={accessToken} />;
+  const resumes = <ResumesSection userId={userId} accessToken={accessToken} />;
+
+  if (wide) {
+    return (
+      <div className="grid grid-cols-2 items-start gap-x-5">
+        <div className="flex min-w-0 flex-col gap-5">
+          {experience}
+          {skills}
+          {certifications}
+        </div>
+        <div className="flex min-w-0 flex-col gap-5">
+          {education}
+          {projects}
+          {resumes}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <>
-      <SkillsSection userId={userId} accessToken={accessToken} />
-      <EducationSection userId={userId} accessToken={accessToken} />
-      <ExperienceSection userId={userId} accessToken={accessToken} />
-      <ProjectsSection userId={userId} accessToken={accessToken} />
-      <CertificationsSection userId={userId} accessToken={accessToken} />
-      <ResumesSection userId={userId} accessToken={accessToken} />
-    </>
+    <div className="flex flex-col gap-5">
+      {experience}
+      {education}
+      {skills}
+      {projects}
+      {certifications}
+      {resumes}
+    </div>
   );
 }

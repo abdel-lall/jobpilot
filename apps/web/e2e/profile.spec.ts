@@ -146,6 +146,11 @@ function profileForm(page: Page, name: string): Locator {
   return page.getByRole("form", { name });
 }
 
+async function openProfileForm(page: Page, name: string): Promise<Locator> {
+  await page.getByRole("button", { name, exact: true }).click();
+  return profileForm(page, name);
+}
+
 test.beforeAll(async () => {
   await waitForOk("http://localhost:3000/health");
   await waitForOk("http://localhost:5173");
@@ -202,11 +207,13 @@ test("shows loading before empty, and keeps a pending section independent", asyn
   await login(page, email);
   await expect(page.getByTestId("signed-in")).toBeVisible();
   await expect(page.getByRole("button", { name: "Log out", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading").nth(0)).toHaveText("Skills");
-  await expect(page.getByRole("heading").nth(1)).toHaveText("Education");
-  await expect(page.getByRole("heading").nth(2)).toHaveText("Work experience");
-  await expect(page.getByRole("heading").nth(3)).toHaveText("Projects");
-  await expect(page.getByRole("heading").nth(4)).toHaveText("Certifications");
+  await expect(page.getByRole("heading").nth(0)).toHaveText("Profile");
+  await expect(page.getByRole("heading").nth(1)).toHaveText("Work Experience");
+  await expect(page.getByRole("heading").nth(2)).toHaveText("Skills");
+  await expect(page.getByRole("heading").nth(3)).toHaveText("Certifications");
+  await expect(page.getByRole("heading").nth(4)).toHaveText("Education");
+  await expect(page.getByRole("heading").nth(5)).toHaveText("Projects");
+  await expect(page.getByRole("heading").nth(6)).toHaveText("Resumes");
 
   for (const section of sections) {
     await expect(page.getByTestId(section.testId)).toBeVisible();
@@ -283,9 +290,9 @@ test("creates, edits, reloads, and deletes one record of each type", async ({ pa
     await expect(page.getByTestId(`${section.testId}-empty`)).toHaveText(section.empty);
   }
 
-  const skillForm = profileForm(page, "Add skill");
+  const skillForm = await openProfileForm(page, "Add skill");
   await skillForm.getByLabel("Name").fill("TypeScript");
-  await skillForm.getByRole("button", { name: "Add skill", exact: true }).click();
+  await skillForm.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByTestId("profile-skills").getByText("TypeScript", { exact: true })).toBeVisible();
   await expect(page.getByTestId("profile-skills-empty")).toHaveCount(0);
 
@@ -295,13 +302,13 @@ test("creates, edits, reloads, and deletes one record of each type", async ({ pa
   await editSkill.getByRole("button", { name: "Save skill", exact: true }).click();
   await expect(page.getByTestId("profile-skills").getByText("Go", { exact: true })).toBeVisible();
 
-  const educationForm = profileForm(page, "Add education");
+  const educationForm = await openProfileForm(page, "Add education");
   await educationForm.getByLabel("Institution").fill("State University");
   await educationForm.getByLabel("Degree").fill("B.S.");
   await educationForm.getByLabel("Field of study").fill("Computer Science");
   await educationForm.getByLabel("Start date").fill("2016-09-01");
   await educationForm.getByLabel("End date").fill("2020-05-15");
-  await educationForm.getByRole("button", { name: "Add education", exact: true }).click();
+  await educationForm.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByTestId("profile-education").getByText("State University", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Edit education", exact: true }).click();
@@ -310,13 +317,14 @@ test("creates, edits, reloads, and deletes one record of each type", async ({ pa
   await editEducation.getByRole("button", { name: "Save education", exact: true }).click();
   await expect(page.getByTestId("profile-education").getByText("City College", { exact: true })).toBeVisible();
 
+  await page.getByRole("button", { name: "Add work experience", exact: true }).click();
   const experienceForm = profileForm(page, "Add experience");
   await experienceForm.getByLabel("Employer").fill("Example Co");
   await experienceForm.getByLabel("Job title").fill("Engineer");
   await experienceForm.getByLabel("Start date").fill("2021-01-04");
   await experienceForm.getByLabel("Accomplishments").fill("Shipped the billing service");
   await experienceForm.getByLabel("Technologies").fill("TypeScript");
-  await experienceForm.getByRole("button", { name: "Add experience", exact: true }).click();
+  await experienceForm.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByTestId("profile-experience").getByText("Engineer", { exact: true })).toBeVisible();
   await expect(page.getByTestId("profile-experience").getByText("Present", { exact: true })).toBeVisible();
 
@@ -326,13 +334,13 @@ test("creates, edits, reloads, and deletes one record of each type", async ({ pa
   await editExperience.getByRole("button", { name: "Save experience", exact: true }).click();
   await expect(page.getByTestId("profile-experience").getByText("Senior Engineer", { exact: true })).toBeVisible();
 
-  const projectForm = profileForm(page, "Add project");
+  const projectForm = await openProfileForm(page, "Add project");
   await projectForm.getByLabel("Name").fill("JobPilot");
   await projectForm.getByLabel("Description").fill("A job application assistant.");
   await projectForm.getByLabel("URL").fill("https://example.com/jobpilot");
   await projectForm.getByLabel("Start date").fill("2024-02-01");
   await projectForm.getByLabel("Technologies").fill("React");
-  await projectForm.getByRole("button", { name: "Add project", exact: true }).click();
+  await projectForm.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByTestId("profile-projects").getByText("JobPilot", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Edit project", exact: true }).click();
@@ -341,11 +349,11 @@ test("creates, edits, reloads, and deletes one record of each type", async ({ pa
   await editProject.getByRole("button", { name: "Save project", exact: true }).click();
   await expect(page.getByTestId("profile-projects").getByText("JobPilot API", { exact: true })).toBeVisible();
 
-  const certificationForm = profileForm(page, "Add certification");
+  const certificationForm = await openProfileForm(page, "Add certification");
   await certificationForm.getByLabel("Name").fill("AWS Cloud Practitioner");
   await certificationForm.getByLabel("Issuer").fill("Amazon Web Services");
   await certificationForm.getByLabel("Issued on").fill("2023-06-01");
-  await certificationForm.getByRole("button", { name: "Add certification", exact: true }).click();
+  await certificationForm.getByRole("button", { name: "Save", exact: true }).click();
   await expect(
     page.getByTestId("profile-certifications").getByText("AWS Cloud Practitioner", { exact: true }),
   ).toBeVisible();
@@ -391,9 +399,9 @@ test("does not reuse another user's cached skills", async ({ page }) => {
   await login(page, emailA);
   await expect(page.getByTestId("profile-skills-empty")).toBeVisible();
 
-  const skillForm = profileForm(page, "Add skill");
+  const skillForm = await openProfileForm(page, "Add skill");
   await skillForm.getByLabel("Name").fill("TypeScript");
-  await skillForm.getByRole("button", { name: "Add skill", exact: true }).click();
+  await skillForm.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByTestId("profile-skills").getByText("TypeScript", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Log out", exact: true }).click();
@@ -443,8 +451,8 @@ test("rejects an empty skill name before sending a request", async ({ page }) =>
   await login(page, email);
   await expect(page.getByTestId("profile-skills-empty")).toBeVisible();
 
-  const form = profileForm(page, "Add skill");
-  await form.getByRole("button", { name: "Add skill", exact: true }).click();
+  const form = await openProfileForm(page, "Add skill");
+  await form.getByRole("button", { name: "Save", exact: true }).click();
   await expect(form.locator("[data-slot='form-message']")).toBeVisible();
   expect(skillPosts).toBe(0);
 });
@@ -465,9 +473,12 @@ test("shows the API error when creating a skill fails", async ({ page }) => {
   await login(page, email);
   await expect(page.getByTestId("profile-skills-empty")).toBeVisible();
 
-  const form = profileForm(page, "Add skill");
+  const form = await openProfileForm(page, "Add skill");
   await form.getByLabel("Name").fill("TypeScript");
-  await form.getByRole("button", { name: "Add skill", exact: true }).click();
+  await form.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByTestId("profile-skills").getByRole("alert")).toHaveText("Invalid input");
-  await expect(page.getByTestId("profile-skills-empty")).toBeVisible();
+  await expect(form).toBeVisible();
+  await expect(page.getByTestId("profile-skills-empty")).toHaveCount(0);
+  await form.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.getByTestId("profile-skills-empty")).toHaveText("No skills yet.");
 });

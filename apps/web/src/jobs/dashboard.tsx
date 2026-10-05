@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useRef, useState, type FormEvent } from "react";
 import { useForm, type Control, type FieldPath, type FieldValues } from "react-hook-form";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Form,
   FormControl,
@@ -466,11 +466,6 @@ export function Dashboard({ userId, accessToken }: DashboardProps) {
   return (
     <section data-testid="dashboard">
       <Card>
-        <CardHeader>
-          <CardTitle>
-            <h2>Dashboard</h2>
-          </CardTitle>
-        </CardHeader>
         <CardContent className="grid gap-4">
           {showLoading ? <p data-testid="jobs-loading">Loading jobs…</p> : null}
           {listError !== null ? <p role="alert">{listError}</p> : null}

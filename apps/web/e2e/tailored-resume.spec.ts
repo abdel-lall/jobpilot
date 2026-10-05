@@ -76,9 +76,10 @@ async function registerAndLogin(page: Page): Promise<void> {
 }
 
 async function addSkill(page: Page, name: string): Promise<void> {
+  await page.getByRole("button", { name: "Add skill", exact: true }).click();
   const form = page.getByRole("form", { name: "Add skill" });
   await form.getByLabel("Name").fill(name);
-  await form.getByRole("button", { name: "Add skill", exact: true }).click();
+  await form.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByTestId("profile-skills").getByText(name, { exact: true })).toBeVisible();
 }
 

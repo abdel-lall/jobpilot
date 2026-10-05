@@ -6,7 +6,7 @@ import {
   type PublicUser,
   type RegisterBody,
 } from "@jobpilot/shared";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useForm, type Control, type FieldPath, type FieldValues } from "react-hook-form";
 import artwork from "@/assets/auth-artwork.png";
 import logo from "@/assets/logo.png";
@@ -61,9 +61,17 @@ function SignedInPage({
 }) {
   const session = useSession();
   const [view, setView] = useState<"profile" | "dashboard">("profile");
+  const mainRef = useRef<HTMLElement>(null);
+
+  function showView(next: "profile" | "dashboard") {
+    setView(next);
+    if (mainRef.current !== null) {
+      mainRef.current.scrollTop = 0;
+    }
+  }
 
   return (
-    <div data-testid="signed-in" className="flex min-h-screen flex-col overflow-x-hidden bg-[var(--jp-canvas)]">
+    <div data-testid="signed-in" className="flex h-dvh flex-col overflow-hidden bg-[var(--jp-canvas)]">
       <header className="shell-header relative z-10 flex h-[70px] shrink-0 items-center justify-between bg-white px-4">
         <img src={logo} alt="JobPilot" width={60} height={60} className="h-[60px] w-[60px] shrink-0" />
         <button
@@ -77,7 +85,7 @@ function SignedInPage({
           <LogoutIcon />
         </button>
       </header>
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden lg:flex-row">
         <nav
           data-testid="app-nav"
           className="flex shrink-0 bg-[var(--jp-navy)] max-lg:gap-2 max-lg:p-2 lg:w-24 lg:flex-col lg:pt-[10px]"
@@ -87,7 +95,7 @@ function SignedInPage({
             label="Dashboard"
             selected={view === "dashboard"}
             onSelect={() => {
-              setView("dashboard");
+              showView("dashboard");
             }}
             icon={<DashboardIcon />}
           />
@@ -96,17 +104,25 @@ function SignedInPage({
             label="Profile"
             selected={view === "profile"}
             onSelect={() => {
-              setView("profile");
+              showView("profile");
             }}
             icon={<ProfileIcon />}
           />
         </nav>
-        <main className="min-w-0 flex-1 bg-[var(--jp-canvas)]">
-          <div className="mx-auto w-full max-w-3xl p-6">
+        <main
+          ref={mainRef}
+          className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-[var(--jp-canvas)]"
+        >
+          <div className="p-5">
+            <h1 className="mb-5 text-2xl font-semibold text-[var(--jp-ink)]">
+              {view === "profile" ? "Profile" : "Dashboard"}
+            </h1>
             {view === "profile" ? (
               <ProfileSections userId={user.id} accessToken={accessToken} />
             ) : (
-              <Dashboard userId={user.id} accessToken={accessToken} />
+              <div className="mx-auto w-full max-w-3xl">
+                <Dashboard userId={user.id} accessToken={accessToken} />
+              </div>
             )}
           </div>
         </main>
