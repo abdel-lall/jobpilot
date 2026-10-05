@@ -1,3 +1,4 @@
+import { toJsonSchema } from "@langchain/core/utils/json_schema";
 import { jobAnalysisSchema } from "@jobpilot/shared";
 import { describe, expect, it } from "vitest";
 import {
@@ -14,6 +15,38 @@ const prompt = `Analyze this job description. Return required skills, preferred 
 
 Job description:
 ${description}`;
+
+const analysisListFields = [
+  "requiredSkills",
+  "preferredSkills",
+  "responsibilities",
+  "experienceRequirements",
+  "technologies",
+  "interviewTopics",
+  "keywords",
+] as const;
+
+function containsSchemaRef(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.some((item) => containsSchemaRef(item));
+  }
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  return Object.entries(value).some(([key, nested]) => key === "$ref" || containsSchemaRef(nested));
+}
+
+describe("job analysis structured output", () => {
+  it("converts the schema to JSON Schema without $ref", () => {
+    const schema: unknown = toJsonSchema(jobAnalysisSchema);
+
+    expect(containsSchemaRef(schema)).toBe(false);
+    expect(schema).toMatchObject({
+      type: "object",
+      properties: Object.fromEntries(analysisListFields.map((field) => [field, { type: "array" }])),
+    });
+  });
+});
 
 describe("job analysis workflow", () => {
   it("returns the stub document and records only the description prompt", async () => {
