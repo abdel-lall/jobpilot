@@ -1,7 +1,11 @@
 import {
+  createGeminiAnswerEvaluationModel,
   createGeminiInterviewQuestionModel,
+  createStubAnswerEvaluationModel,
   createStubInterviewQuestionModel,
+  evaluateAnswer,
   generateInterviewQuestions,
+  type AnswerEvaluationModel,
   type GeneratedInterviewQuestion,
   type InterviewQuestionModel,
 } from "@jobpilot/ai";
@@ -17,6 +21,7 @@ import { InterviewAttemptError } from "./errors.js";
 
 export type InterviewAttemptDependencies = {
   interviewQuestionModel?: InterviewQuestionModel;
+  answerEvaluationModel?: AnswerEvaluationModel;
 };
 
 type StoredQuestion = {
@@ -34,9 +39,31 @@ type StoredQuestion = {
 type StoredAttempt = {
   id: string;
   jobId: string;
-  status: "in_progress";
+  status: "in_progress" | "completed";
   questions: StoredQuestion[];
 };
+
+function resolveAnswerEvaluationModel(
+  override: AnswerEvaluationModel | undefined,
+): AnswerEvaluationModel {
+  if (override !== undefined) {
+    return override;
+  }
+  const selection = process.env.ANSWER_EVALUATION_MODEL;
+  if (selection === "stub") {
+    return createStubAnswerEvaluationModel();
+  }
+  if (selection === undefined || selection === "gemini") {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (apiKey !== undefined && apiKey.length > 0) {
+      const configured = process.env.GEMINI_MODEL;
+      const modelName =
+        configured !== undefined && configured.length > 0 ? configured : "gemini-2.5-flash";
+      return createGeminiAnswerEvaluationModel(apiKey, modelName);
+    }
+  }
+  throw new InterviewAttemptError("evaluation_failed");
+}
 
 function resolveInterviewQuestionModel(
   override: InterviewQuestionModel | undefined,
@@ -108,7 +135,7 @@ function toAttempt(attempt: StoredAttempt): { attempt: InterviewAttempt } {
     attempt: interviewAttemptSchema.parse({
       id: attempt.id,
       jobId: attempt.jobId,
-      status: "in_progress",
+      status: attempt.status,
       questions: questions.map((question) => ({
         id: question.id,
         position: question.position,
@@ -116,9 +143,9 @@ function toAttempt(attempt: StoredAttempt): { attempt: InterviewAttempt } {
         category: question.category,
         expectedConcepts: question.expectedConcepts,
         rubric: question.rubric,
-        answer: null,
-        feedback: null,
-        score: null,
+        answer: question.answer,
+        feedback: question.feedback,
+        score: question.score,
       })),
     }),
   };
@@ -161,6 +188,9 @@ export async function startInterviewAttempt(
   if (existing.interviewAttempts.some((attempt) => attempt.status === "in_progress")) {
     throw new InterviewAttemptError("already_in_progress");
   }
+  if (existing.interviewAttempts.length > 0) {
+    throw new InterviewAttemptError("already_completed");
+  }
 
   const storedQuestionTexts = existing.interviewAttempts.flatMap((attempt) =>
     attempt.questions.map((question) => question.text),
@@ -184,12 +214,16 @@ export async function startInterviewAttempt(
 
   try {
     const created = await getPrisma().$transaction(async (tx) => {
-      const inProgress = await tx.interviewAttempt.findFirst({
-        where: { jobId, status: "in_progress" },
-        select: { id: true },
+      await tx.$queryRaw`SELECT "id" FROM "Job" WHERE "id" = ${jobId} FOR UPDATE`;
+      const attempts = await tx.interviewAttempt.findMany({
+        where: { jobId },
+        select: { status: true },
       });
-      if (inProgress !== null) {
+      if (attempts.some((item) => item.status === "in_progress")) {
         throw new InterviewAttemptError("already_in_progress");
+      }
+      if (attempts.length > 0) {
+        throw new InterviewAttemptError("already_completed");
       }
       const collision = await tx.interviewQuestion.findFirst({
         where: { jobId, normalizedText: { in: normalizedTexts } },
@@ -236,7 +270,7 @@ export async function readInterviewAttempt(
     where: { id: jobId, userId },
     include: {
       interviewAttempts: {
-        where: { status: "in_progress" },
+        orderBy: { createdAt: "asc" },
         include: {
           questions: { orderBy: { position: "asc" } },
         },
@@ -251,4 +285,97 @@ export async function readInterviewAttempt(
     throw new InterviewAttemptError("not_found");
   }
   return toAttempt(attempt);
+}
+
+export async function submitInterviewAnswer(
+  userId: string,
+  jobId: string,
+  questionId: string,
+  answer: string,
+  dependencies: InterviewAttemptDependencies,
+): Promise<{ attempt: InterviewAttempt }> {
+  const existing = await getPrisma().job.findFirst({
+    where: { id: jobId, userId },
+    include: {
+      interviewAttempts: {
+        orderBy: { createdAt: "asc" },
+        include: {
+          questions: { orderBy: { position: "asc" } },
+        },
+      },
+    },
+  });
+  if (existing === null) {
+    throw new InterviewAttemptError("not_found");
+  }
+  const attempt = existing.interviewAttempts[0];
+  if (attempt === undefined) {
+    throw new InterviewAttemptError("not_found");
+  }
+  const question = attempt.questions.find((item) => item.id === questionId);
+  if (question === undefined) {
+    throw new InterviewAttemptError("not_found");
+  }
+  if (question.answer !== null || question.feedback !== null || question.score !== null) {
+    throw new InterviewAttemptError("already_answered");
+  }
+  if (attempt.status !== "in_progress") {
+    throw new InterviewAttemptError("already_completed");
+  }
+
+  const trimmed = answer.trim();
+  let evaluated: { feedback: string; score: number };
+  try {
+    const model = resolveAnswerEvaluationModel(dependencies.answerEvaluationModel);
+    evaluated = await evaluateAnswer(question.text, question.rubric, trimmed, model);
+  } catch (error) {
+    if (error instanceof InterviewAttemptError) {
+      throw error;
+    }
+    throw new InterviewAttemptError("evaluation_failed");
+  }
+
+  const updated = await getPrisma().$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "InterviewAttempt" WHERE "id" = ${attempt.id} FOR UPDATE`;
+    const written = await tx.interviewQuestion.updateMany({
+      where: {
+        id: questionId,
+        attemptId: attempt.id,
+        answer: null,
+        feedback: null,
+        score: null,
+      },
+      data: {
+        answer: trimmed,
+        feedback: evaluated.feedback,
+        score: evaluated.score,
+      },
+    });
+    if (written.count !== 1) {
+      throw new InterviewAttemptError("already_answered");
+    }
+    const current = await tx.interviewAttempt.findFirst({
+      where: { id: attempt.id },
+      select: { status: true },
+    });
+    if (current === null || current.status !== "in_progress") {
+      throw new InterviewAttemptError("already_completed");
+    }
+    const scoredCount = await tx.interviewQuestion.count({
+      where: { attemptId: attempt.id, score: { not: null } },
+    });
+    if (scoredCount === 8) {
+      await tx.interviewAttempt.update({
+        where: { id: attempt.id },
+        data: { status: "completed" },
+      });
+    }
+    return tx.interviewAttempt.findFirstOrThrow({
+      where: { id: attempt.id },
+      include: {
+        questions: { orderBy: { position: "asc" } },
+      },
+    });
+  });
+  return toAttempt(updated);
 }

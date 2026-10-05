@@ -1,3 +1,4 @@
+import { submitInterviewAnswerBodySchema } from "@jobpilot/shared";
 import { Router, type Request, type Response } from "express";
 import { AuthError } from "../auth/errors.js";
 import { getAuthenticatedUser } from "../auth/service.js";
@@ -5,6 +6,7 @@ import { InterviewAttemptError } from "../interview-attempt/errors.js";
 import {
   readInterviewAttempt,
   startInterviewAttempt,
+  submitInterviewAnswer,
   type InterviewAttemptDependencies,
 } from "../interview-attempt/service.js";
 
@@ -33,8 +35,20 @@ function sendError(response: Response, error: unknown): void {
     response.status(409).json({ error: "Interview attempt already in progress" });
     return;
   }
+  if (error instanceof InterviewAttemptError && error.code === "already_answered") {
+    response.status(409).json({ error: "Question already answered" });
+    return;
+  }
+  if (error instanceof InterviewAttemptError && error.code === "already_completed") {
+    response.status(409).json({ error: "Interview attempt already completed" });
+    return;
+  }
   if (error instanceof InterviewAttemptError && error.code === "generation_failed") {
     response.status(502).json({ error: "Interview question generation failed" });
+    return;
+  }
+  if (error instanceof InterviewAttemptError && error.code === "evaluation_failed") {
+    response.status(502).json({ error: "Answer evaluation failed" });
     return;
   }
   response.status(500).json({ error: "Internal server error" });
@@ -51,6 +65,11 @@ async function respond(response: Response, action: () => Promise<unknown>): Prom
 function pathId(request: Request): string {
   const id = request.params.id;
   return typeof id === "string" ? id : "";
+}
+
+function pathQuestionId(request: Request): string {
+  const questionId = request.params.questionId;
+  return typeof questionId === "string" ? questionId : "";
 }
 
 async function requireUserId(request: Request, response: Response): Promise<string | undefined> {
@@ -87,6 +106,26 @@ export function createInterviewAttemptRouter(dependencies: InterviewAttemptDepen
     const id = pathId(request);
     await respond(response, () => readInterviewAttempt(userId, id));
   });
+
+  router.post(
+    "/jobs/:id/interview-attempts/current/questions/:questionId/answer",
+    async (request, response) => {
+      const userId = await requireUserId(request, response);
+      if (userId === undefined) {
+        return;
+      }
+      const parsed = submitInterviewAnswerBodySchema.safeParse(request.body);
+      if (!parsed.success) {
+        response.status(400).json({ error: "Invalid input" });
+        return;
+      }
+      const id = pathId(request);
+      const questionId = pathQuestionId(request);
+      await respond(response, () =>
+        submitInterviewAnswer(userId, id, questionId, parsed.data.answer, dependencies),
+      );
+    },
+  );
 
   return router;
 }

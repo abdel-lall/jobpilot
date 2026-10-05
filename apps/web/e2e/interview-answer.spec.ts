@@ -17,7 +17,7 @@ const createdEmails: string[] = [];
 const password = "password1";
 
 function uniqueEmail(): string {
-  const email = `phase16-${randomUUID()}@example.com`;
+  const email = `phase17-${randomUUID()}@example.com`;
   createdEmails.push(email);
   return email;
 }
@@ -26,8 +26,8 @@ function isInterviewPlan(url: URL): boolean {
   return /^\/jobs\/[^/]+\/interview-plan$/.test(url.pathname);
 }
 
-function isInterviewAttemptStart(url: URL): boolean {
-  return /^\/jobs\/[^/]+\/interview-attempts$/.test(url.pathname);
+function isInterviewAnswer(url: URL): boolean {
+  return /^\/jobs\/[^/]+\/interview-attempts\/current\/questions\/[^/]+\/answer$/.test(url.pathname);
 }
 
 async function waitForOk(url: string): Promise<void> {
@@ -105,6 +105,20 @@ async function generatePlan(page: Page): Promise<void> {
   expect(JSON.parse(raw ?? "null")).toEqual({});
 }
 
+async function startAttempt(page: Page, row: Locator): Promise<Locator> {
+  await row.getByTestId("open-interview-plan").click();
+  const planPanel = page.getByTestId("interview-plan-panel");
+  await expect(planPanel.getByTestId("interview-plan-empty")).toHaveText("No interview plan yet.");
+  await generatePlan(page);
+  await expect(planPanel.getByTestId("plan-category").filter({ hasText: "Backend" })).toBeVisible();
+  await row.getByTestId("open-interview-attempt").click();
+  const panel = page.getByTestId("interview-attempt-panel");
+  await expect(panel.getByTestId("interview-attempt-empty")).toHaveText("No interview attempt yet.");
+  await panel.getByTestId("start-interview-attempt").click();
+  await expect(panel.getByTestId("interview-question")).toHaveCount(8);
+  return panel;
+}
+
 test.beforeAll(async () => {
   await waitForOk("http://localhost:3000/health");
   await waitForOk("http://localhost:5173");
@@ -121,85 +135,63 @@ test.afterAll(async () => {
   await prisma.$disconnect();
 });
 
-test("starts an attempt and lists 8 stub questions", async ({ page }) => {
+test("submits one answer and shows feedback and the score on that question only", async ({
+  page,
+}) => {
   await registerAndLogin(page);
   const row = await createExampleJob(page);
-  await expect(row.getByTestId("job-analysis")).toHaveText("Current");
-  await expect(row.getByTestId("job-tailored-resume")).toHaveText("Not available");
-  await expect(row.getByTestId("job-interview-plan")).toHaveText("Not available");
-  await expect(row.getByTestId("job-score")).toHaveText("Not available");
-  await expect(row.getByTestId("job-readiness")).toHaveText("Not available");
-
-  await row.getByTestId("open-interview-plan").click();
-  const planPanel = page.getByTestId("interview-plan-panel");
-  await expect(planPanel.getByTestId("interview-plan-empty")).toHaveText("No interview plan yet.");
-  await generatePlan(page);
-  await expect(planPanel.getByTestId("plan-category").filter({ hasText: "Backend" })).toBeVisible();
-  await expect(row.getByTestId("job-interview-plan")).toHaveText("Present");
-
-  await row.getByTestId("open-interview-attempt").click();
-  await expect(planPanel).toHaveCount(0);
-  const panel = page.getByTestId("interview-attempt-panel");
-  await expect(panel).toBeVisible();
-  await expect(panel.getByTestId("interview-attempt-empty")).toHaveText("No interview attempt yet.");
-  await expect(panel.getByTestId("interview-question")).toHaveCount(0);
-  await expect(row.getByTestId("open-interview-attempt")).toHaveCount(0);
+  const panel = await startAttempt(page, row);
+  const questions = panel.getByTestId("interview-question");
+  const first = questions.first();
+  await first.getByTestId("interview-question-answer-input").fill("I would add an index.");
 
   const requestPromise = page.waitForRequest(
-    (request) => request.method() === "POST" && isInterviewAttemptStart(new URL(request.url())),
+    (request) => request.method() === "POST" && isInterviewAnswer(new URL(request.url())),
   );
-  await panel.getByTestId("start-interview-attempt").click();
+  await first.getByTestId("interview-question-submit").click();
   const raw = (await requestPromise).postData();
-  expect(JSON.parse(raw ?? "null")).toEqual({});
+  expect(JSON.parse(raw ?? "null")).toEqual({ answer: "I would add an index." });
 
-  const questions = panel.getByTestId("interview-question");
-  await expect(questions).toHaveCount(8);
-  for (let index = 0; index < 4; index += 1) {
-    const question = questions.nth(index);
-    await expect(question.getByTestId("interview-question-category")).toHaveText("Backend");
-    await expect(question.getByTestId("interview-question-text")).toHaveText(
-      `Stub Backend question ${index + 1}`,
-    );
-    await expect(question.getByTestId("interview-question-concept")).toHaveText("stub-concept");
-    await expect(question.getByTestId("interview-question-rubric")).toHaveText("stub-rubric");
-  }
-  for (let index = 0; index < 4; index += 1) {
-    const question = questions.nth(index + 4);
-    await expect(question.getByTestId("interview-question-category")).toHaveText(
-      "Behavioral questions",
-    );
-    await expect(question.getByTestId("interview-question-text")).toHaveText(
-      `Stub Behavioral questions question ${index + 1}`,
-    );
-    await expect(question.getByTestId("interview-question-concept")).toHaveText("stub-concept");
-    await expect(question.getByTestId("interview-question-rubric")).toHaveText("stub-rubric");
-  }
-  await expect(panel.getByTestId("interview-question-answer-input")).toHaveCount(8);
-  await expect(panel.getByRole("button", { name: "Submit answer" })).toHaveCount(8);
-  await expect(panel.getByTestId("interview-question-submit")).toHaveCount(8);
-  await expect(panel.getByTestId("start-interview-attempt")).toHaveCount(0);
+  await expect(panel).toBeVisible();
+  await expect(first.getByTestId("interview-question-answer")).toHaveText("I would add an index.");
+  await expect(first.getByTestId("interview-question-feedback")).toHaveText("stub-feedback");
+  await expect(first.getByTestId("interview-question-score")).toHaveText("80");
+  await expect(first.getByTestId("interview-question-answer-input")).toHaveCount(0);
+  await expect(first.getByRole("button", { name: "Submit answer" })).toHaveCount(0);
   await expect(panel.getByTestId("interview-attempt-empty")).toHaveCount(0);
+  await expect(panel.getByTestId("start-interview-attempt")).toHaveCount(0);
+
+  for (let index = 1; index < 8; index += 1) {
+    const question = questions.nth(index);
+    await expect(question.getByTestId("interview-question-answer-input")).toBeVisible();
+    await expect(question.getByRole("button", { name: "Submit answer" })).toBeVisible();
+    await expect(question.getByTestId("interview-question-feedback")).toHaveCount(0);
+  }
+
   await expect(row.getByTestId("job-score")).toHaveText("Not available");
   await expect(row.getByTestId("job-readiness")).toHaveText("Not available");
-  await expect(row.getByTestId("job-interview-plan")).toHaveText("Present");
-  await expect(panel).toBeVisible();
 });
 
-test("shows the start error when no attempt exists", async ({ page }) => {
+test("shows the evaluation error and keeps the answer box", async ({ page }) => {
   await registerAndLogin(page);
   const row = await createExampleJob(page);
-  await row.getByTestId("open-interview-attempt").click();
-  const panel = page.getByTestId("interview-attempt-panel");
-  await expect(panel.getByTestId("interview-attempt-empty")).toHaveText("No interview attempt yet.");
-  await page.route(isInterviewAttemptStart, async (route) => {
+  const panel = await startAttempt(page, row);
+  await page.route(isInterviewAnswer, async (route) => {
     if (route.request().method() !== "POST") {
       await route.continue();
       return;
     }
-    await fulfillJson(route, 502, { error: "Interview question generation failed" });
+    await fulfillJson(route, 502, { error: "Answer evaluation failed" });
   });
-  await panel.getByTestId("start-interview-attempt").click();
-  await expect(panel.getByText("Interview question generation failed", { exact: true })).toBeVisible();
-  await expect(panel.getByTestId("interview-attempt-empty")).toHaveText("No interview attempt yet.");
-  await expect(panel.getByTestId("interview-question")).toHaveCount(0);
+  const first = panel.getByTestId("interview-question").first();
+  await first.getByTestId("interview-question-answer-input").fill("I would add an index.");
+  await first.getByTestId("interview-question-submit").click();
+  await expect(panel.getByText("Answer evaluation failed", { exact: true })).toBeVisible();
+  await expect(first.getByTestId("interview-question-answer-input")).toHaveValue(
+    "I would add an index.",
+  );
+  await expect(first.getByTestId("interview-question-feedback")).toHaveCount(0);
+  await expect(first.getByTestId("interview-question-score")).toHaveCount(0);
+  await expect(panel.getByText("stub-feedback", { exact: true })).toHaveCount(0);
+  await expect(panel.getByText("80", { exact: true })).toHaveCount(0);
 });

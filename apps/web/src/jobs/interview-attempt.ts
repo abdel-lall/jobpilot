@@ -1,4 +1,8 @@
-import { interviewAttemptSchema, type InterviewAttempt } from "@jobpilot/shared";
+import {
+  interviewAttemptSchema,
+  submitInterviewAnswerBodySchema,
+  type InterviewAttempt,
+} from "@jobpilot/shared";
 import { z } from "zod";
 import { authFetch, readErrorMessage } from "@/lib/api";
 
@@ -62,6 +66,30 @@ export async function startInterviewAttempt(
     accessToken,
     body: {},
   });
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response));
+  }
+  return parseAttempt(await readJsonBody(response));
+}
+
+export async function submitInterviewAnswer(
+  accessToken: string,
+  jobId: string,
+  questionId: string,
+  answer: string,
+): Promise<InterviewAttempt> {
+  const parsed = submitInterviewAnswerBodySchema.safeParse({ answer });
+  if (!parsed.success) {
+    throw new Error("Request failed");
+  }
+  const response = await authFetch(
+    `/jobs/${encodeURIComponent(jobId)}/interview-attempts/current/questions/${encodeURIComponent(questionId)}/answer`,
+    {
+      method: "POST",
+      accessToken,
+      body: parsed.data,
+    },
+  );
   if (!response.ok) {
     throw new Error(await readErrorMessage(response));
   }

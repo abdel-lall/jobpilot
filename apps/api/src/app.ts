@@ -1,4 +1,5 @@
 import type {
+  AnswerEvaluationModel,
   EmbeddingClient,
   InterviewPlanModel,
   InterviewQuestionModel,
@@ -25,6 +26,7 @@ export type CreateAppOptions = AuthServiceOptions & {
   resumeModel?: ResumeTailoringModel;
   interviewPlanModel?: InterviewPlanModel;
   interviewQuestionModel?: InterviewQuestionModel;
+  answerEvaluationModel?: AnswerEvaluationModel;
 };
 
 export type { PrismaClient };
@@ -69,6 +71,7 @@ export function createApp(options?: CreateAppOptions) {
   app.use(
     createInterviewAttemptRouter({
       interviewQuestionModel: options?.interviewQuestionModel,
+      answerEvaluationModel: options?.answerEvaluationModel,
     }),
   );
   return app;
