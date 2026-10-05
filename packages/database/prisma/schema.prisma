@@ -144,6 +144,7 @@ model Job {
 
 enum InterviewAttemptStatus {
   in_progress
+  completed
 }
 
 model TailoredResume {

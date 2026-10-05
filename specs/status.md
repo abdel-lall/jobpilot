@@ -2,7 +2,7 @@
 
 ## Repository
 
-Phase 16 is complete on branch `phase/16-interview-questions`. Phase 17 is next.
+Phase 17 is complete on branch `phase/17-answer-evaluation`. Phase 18 is next.
 
 ## Phases
 
@@ -22,5 +22,5 @@ Phase 16 is complete on branch `phase/16-interview-questions`. Phase 17 is next.
 - 14 — Tailored resume UI — Complete
 - 15 — Interview plan — Complete
 - 16 — Interview question generation — Complete
-- 17 — Answer evaluation — Next
-- 18 — Retakes and readiness — Not started
+- 17 — Answer evaluation — Complete
+- 18 — Retakes and readiness — Next

@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 import {
+  createStubAnswerEvaluationModel,
   createStubJobAnalysisModel,
+  type AnswerEvaluationModel,
+  type AnswerEvaluationModelInput,
   type InterviewPlanModel,
   type InterviewQuestionModel,
   type InterviewQuestionModelInput,
@@ -14,6 +17,7 @@ import { createApp } from "./app.js";
 
 delete process.env.GEMINI_API_KEY;
 delete process.env.INTERVIEW_QUESTION_MODEL;
+delete process.env.ANSWER_EVALUATION_MODEL;
 
 const databaseUrl = process.env.DATABASE_URL;
 const jwtSecret = process.env.JWT_SECRET;
@@ -62,6 +66,16 @@ type Harness = {
   rejectingApp: App;
   calls: InterviewQuestionModelInput[];
 };
+
+function evaluationModel(calls: AnswerEvaluationModelInput[]): AnswerEvaluationModel {
+  const stub = createStubAnswerEvaluationModel();
+  return {
+    async evaluate(input) {
+      calls.push(input);
+      return stub.evaluate(input);
+    },
+  };
+}
 
 function questionModel(calls: InterviewQuestionModelInput[]): InterviewQuestionModel {
   return {
@@ -467,4 +481,534 @@ describe("interview attempt", () => {
     expect(await prisma.interviewAttempt.count({ where: { jobId: inserted.id } })).toBe(0);
     expect(await prisma.interviewQuestion.count({ where: { jobId: inserted.id } })).toBe(0);
   });
+
+  it("stores one trimmed answer, rejects a repeat, and leaves the other questions unanswered", async () => {
+    const evaluationCalls: AnswerEvaluationModelInput[] = [];
+    const harness = createHarness();
+    const app = createApp({
+      jobAnalysisModel: createStubJobAnalysisModel(),
+      interviewQuestionModel: questionModel(harness.calls),
+      answerEvaluationModel: evaluationModel(evaluationCalls),
+    });
+    const owner = await registerAndLogin(app);
+    const jobId = await createCurrentJob(app, owner.token);
+    await seedPlan(jobId);
+    const created = await request(app)
+      .post(`/jobs/${jobId}/interview-attempts`)
+      .set(auth(owner.token))
+      .send({});
+    expect(created.status).toBe(200);
+    const started = interviewAttemptSchema.parse(created.body.attempt);
+    const question = started.questions[0];
+    if (question === undefined) {
+      throw new Error("missing question");
+    }
+
+    const scored = await request(app)
+      .post(`/jobs/${jobId}/interview-attempts/current/questions/${question.id}/answer`)
+      .set(auth(owner.token))
+      .send({ answer: "  I would add an index.  " });
+    expect(scored.status).toBe(200);
+    const attempt = interviewAttemptSchema.parse(scored.body.attempt);
+    expect(scored.body).toEqual({ attempt });
+    expect(attempt.status).toBe("in_progress");
+    expect(attempt.questions[0]).toMatchObject({
+      id: question.id,
+      answer: "I would add an index.",
+      feedback: "stub-feedback",
+      score: 80,
+    });
+    expect(attempt.questions.slice(1).every((item) => item.answer === null)).toBe(true);
+    expect(attempt.questions.slice(1).every((item) => item.feedback === null)).toBe(true);
+    expect(attempt.questions.slice(1).every((item) => item.score === null)).toBe(true);
+    expect(evaluationCalls).toHaveLength(1);
+    expect(Object.keys(evaluationCalls[0] ?? {})).toEqual([
+      "questionText",
+      "rubric",
+      "answer",
+      "prompt",
+    ]);
+    expect(evaluationCalls[0]?.answer).toBe("I would add an index.");
+    expect(evaluationCalls[0]?.questionText).toBe(question.text);
+    expect(evaluationCalls[0]?.rubric).toBe(question.rubric);
+
+    const listed = await request(app).get(`/jobs/${jobId}`).set(auth(owner.token));
+    expect(listed.status).toBe(200);
+    expect(listed.body.job.status.latestOverallScore).toBeNull();
+    expect(listed.body.job.status.readinessBadge).toBeNull();
+
+    const read = await request(app)
+      .get(`/jobs/${jobId}/interview-attempts/current`)
+      .set(auth(owner.token));
+    expect(read.status).toBe(200);
+    expect(read.body).toEqual({ attempt });
+
+    const stored = await prisma.interviewQuestion.findMany({
+      where: { attemptId: attempt.id },
+      orderBy: { position: "asc" },
+    });
+    expect(stored[0]?.answer).toBe("I would add an index.");
+    expect(stored[0]?.feedback).toBe("stub-feedback");
+    expect(stored[0]?.score).toBe(80);
+    expect(
+      stored
+        .slice(1)
+        .every((item) => item.answer === null && item.feedback === null && item.score === null),
+    ).toBe(true);
+
+    const again = await request(app)
+      .post(`/jobs/${jobId}/interview-attempts/current/questions/${question.id}/answer`)
+      .set(auth(owner.token))
+      .send({ answer: "A different answer." });
+    expect(again.status).toBe(409);
+    expect(again.body).toEqual({ error: "Question already answered" });
+    expect(evaluationCalls).toHaveLength(1);
+    const unchanged = await prisma.interviewQuestion.findUnique({ where: { id: question.id } });
+    expect(unchanged?.answer).toBe("I would add an index.");
+    expect(unchanged?.feedback).toBe("stub-feedback");
+    expect(unchanged?.score).toBe(80);
+    expect((await prisma.interviewAttempt.findUnique({ where: { id: attempt.id } }))?.status).toBe(
+      "in_progress",
+    );
+  });
+
+  it("returns 502 and writes nothing when the model score is 101", async () => {
+    const app = createApp({
+      jobAnalysisModel: createStubJobAnalysisModel(),
+      interviewQuestionModel: questionModel([]),
+      answerEvaluationModel: {
+        async evaluate() {
+          return { feedback: "too high", score: 101 };
+        },
+      },
+    });
+    const owner = await registerAndLogin(app);
+    const jobId = await createCurrentJob(app, owner.token);
+    await seedPlan(jobId);
+    const created = await request(app)
+      .post(`/jobs/${jobId}/interview-attempts`)
+      .set(auth(owner.token))
+      .send({});
+    const questionId = interviewAttemptSchema.parse(created.body.attempt).questions[0]?.id;
+    if (questionId === undefined) {
+      throw new Error("missing question");
+    }
+    const failed = await request(app)
+      .post(`/jobs/${jobId}/interview-attempts/current/questions/${questionId}/answer`)
+      .set(auth(owner.token))
+      .send({ answer: "I would add an index." });
+    expect(failed.status).toBe(502);
+    expect(failed.body).toEqual({ error: "Answer evaluation failed" });
+    const stored = await prisma.interviewQuestion.findUnique({ where: { id: questionId } });
+    expect(stored?.answer).toBeNull();
+    expect(stored?.feedback).toBeNull();
+    expect(stored?.score).toBeNull();
+    expect((await prisma.interviewAttempt.findFirst({ where: { jobId } }))?.status).toBe(
+      "in_progress",
+    );
+  });
+
+  it("marks the attempt completed only on the eighth score and rejects another start", async () => {
+    const evaluationCalls: AnswerEvaluationModelInput[] = [];
+    const questionCalls: InterviewQuestionModelInput[] = [];
+    const app = createApp({
+      jobAnalysisModel: createStubJobAnalysisModel(),
+      interviewQuestionModel: questionModel(questionCalls),
+      answerEvaluationModel: evaluationModel(evaluationCalls),
+    });
+    const owner = await registerAndLogin(app);
+    const jobId = await createCurrentJob(app, owner.token);
+    await seedPlan(jobId);
+    const created = await request(app)
+      .post(`/jobs/${jobId}/interview-attempts`)
+      .set(auth(owner.token))
+      .send({});
+    const started = interviewAttemptSchema.parse(created.body.attempt);
+    const callsAfterStart = questionCalls.length;
+
+    for (let index = 0; index < started.questions.length; index += 1) {
+      const question = started.questions[index];
+      if (question === undefined) {
+        throw new Error("missing question");
+      }
+      const scored = await request(app)
+        .post(`/jobs/${jobId}/interview-attempts/current/questions/${question.id}/answer`)
+        .set(auth(owner.token))
+        .send({ answer: `Answer ${index + 1}` });
+      expect(scored.status).toBe(200);
+      const attempt = interviewAttemptSchema.parse(scored.body.attempt);
+      if (index < 7) {
+        expect(attempt.status).toBe("in_progress");
+      } else {
+        expect(attempt.status).toBe("completed");
+        expect(attempt.questions.every((item) => item.score === 80)).toBe(true);
+      }
+    }
+
+    const read = await request(app)
+      .get(`/jobs/${jobId}/interview-attempts/current`)
+      .set(auth(owner.token));
+    expect(read.status).toBe(200);
+    const completed = interviewAttemptSchema.parse(read.body.attempt);
+    expect(completed.status).toBe("completed");
+    expect(completed.questions).toHaveLength(8);
+    expect(completed.questions.every((item) => typeof item.score === "number")).toBe(true);
+
+    const listed = await request(app).get(`/jobs/${jobId}`).set(auth(owner.token));
+    expect(listed.body.job.status.latestOverallScore).toBeNull();
+    expect(listed.body.job.status.readinessBadge).toBeNull();
+
+    const again = await request(app)
+      .post(`/jobs/${jobId}/interview-attempts`)
+      .set(auth(owner.token))
+      .send({});
+    expect(again.status).toBe(409);
+    expect(again.body).toEqual({ error: "Interview attempt already completed" });
+    expect(questionCalls).toHaveLength(callsAfterStart);
+    expect(evaluationCalls).toHaveLength(8);
+    expect(await prisma.interviewAttempt.count({ where: { jobId } })).toBe(1);
+  });
+
+  it("rejects another user, an unknown question, an invalid body, and a missing token without calling the model", async () => {
+    const evaluationCalls: AnswerEvaluationModelInput[] = [];
+    const app = createApp({
+      jobAnalysisModel: createStubJobAnalysisModel(),
+      interviewQuestionModel: questionModel([]),
+      answerEvaluationModel: evaluationModel(evaluationCalls),
+    });
+    const owner = await registerAndLogin(app);
+    const other = await registerAndLogin(app);
+    const jobId = await createCurrentJob(app, owner.token);
+    await seedPlan(jobId);
+    const created = await request(app)
+      .post(`/jobs/${jobId}/interview-attempts`)
+      .set(auth(owner.token))
+      .send({});
+    const questionId = interviewAttemptSchema.parse(created.body.attempt).questions[0]?.id;
+    if (questionId === undefined) {
+      throw new Error("missing question");
+    }
+    const answerPath = `/jobs/${jobId}/interview-attempts/current/questions/${questionId}/answer`;
+
+    const crossUser = await request(app)
+      .post(answerPath)
+      .set(auth(other.token))
+      .send({ answer: "I would add an index." });
+    expect(crossUser.status).toBe(404);
+    expect(crossUser.body).toEqual({ error: "Not found" });
+
+    const missingQuestion = await request(app)
+      .post(`/jobs/${jobId}/interview-attempts/current/questions/${randomUUID()}/answer`)
+      .set(auth(owner.token))
+      .send({ answer: "I would add an index." });
+    expect(missingQuestion.status).toBe(404);
+    expect(missingQuestion.body).toEqual({ error: "Not found" });
+
+    const blank = await request(app).post(answerPath).set(auth(owner.token)).send({ answer: "   " });
+    expect(blank.status).toBe(400);
+    expect(blank.body).toEqual({ error: "Invalid input" });
+
+    const missingAnswer = await request(app).post(answerPath).set(auth(owner.token)).send({});
+    expect(missingAnswer.status).toBe(400);
+    expect(missingAnswer.body).toEqual({ error: "Invalid input" });
+
+    const unknownKey = await request(app)
+      .post(answerPath)
+      .set(auth(owner.token))
+      .send({ answer: "I would add an index.", extra: true });
+    expect(unknownKey.status).toBe(400);
+    expect(unknownKey.body).toEqual({ error: "Invalid input" });
+
+    const missingToken = await request(app)
+      .post(answerPath)
+      .send({ answer: "I would add an index." });
+    expect(missingToken.status).toBe(401);
+    expect(missingToken.body).toEqual({ error: "Unauthorized" });
+
+    const invalidToken = await request(app)
+      .post(answerPath)
+      .set("Authorization", "Bearer not-a-token")
+      .send({ answer: "I would add an index." });
+    expect(invalidToken.status).toBe(401);
+    expect(invalidToken.body).toEqual({ error: "Unauthorized" });
+
+    expect(evaluationCalls).toHaveLength(0);
+    const stored = await prisma.interviewQuestion.findUnique({ where: { id: questionId } });
+    expect(stored?.answer).toBeNull();
+    expect(stored?.feedback).toBeNull();
+    expect(stored?.score).toBeNull();
+  });
+
+  it("returns 502 and writes nothing when createApp has no evaluation model and both env vars are unset", async () => {
+    expect(process.env.GEMINI_API_KEY).toBeUndefined();
+    expect(process.env.ANSWER_EVALUATION_MODEL).toBeUndefined();
+    const harness = createHarness();
+    const owner = await registerAndLogin(harness.app);
+    const jobId = await createCurrentJob(harness.app, owner.token);
+    await seedPlan(jobId);
+    const created = await request(harness.app)
+      .post(`/jobs/${jobId}/interview-attempts`)
+      .set(auth(owner.token))
+      .send({});
+    const questionId = interviewAttemptSchema.parse(created.body.attempt).questions[0]?.id;
+    if (questionId === undefined) {
+      throw new Error("missing question");
+    }
+    const bare = createApp();
+    const failed = await request(bare)
+      .post(`/jobs/${jobId}/interview-attempts/current/questions/${questionId}/answer`)
+      .set(auth(owner.token))
+      .send({ answer: "I would add an index." });
+    expect(failed.status).toBe(502);
+    expect(failed.body).toEqual({ error: "Answer evaluation failed" });
+    const stored = await prisma.interviewQuestion.findUnique({ where: { id: questionId } });
+    expect(stored?.answer).toBeNull();
+    expect(stored?.feedback).toBeNull();
+    expect(stored?.score).toBeNull();
+    expect(await prisma.interviewAttempt.count({ where: { jobId } })).toBe(1);
+  });
+
+  it("completes the attempt when overlapping answers score the last two questions", async () => {
+    const app = createApp({
+      jobAnalysisModel: createStubJobAnalysisModel(),
+      interviewQuestionModel: questionModel([]),
+      answerEvaluationModel: evaluationModel([]),
+    });
+    const owner = await registerAndLogin(app);
+    const jobId = await createCurrentJob(app, owner.token);
+    await seedPlan(jobId);
+    const created = await request(app)
+      .post(`/jobs/${jobId}/interview-attempts`)
+      .set(auth(owner.token))
+      .send({});
+    const started = interviewAttemptSchema.parse(created.body.attempt);
+    const attemptId = started.id;
+    const trailing = started.questions.slice(6);
+    const waitingQuestion = trailing[0];
+    const heldQuestion = trailing[1];
+    if (waitingQuestion === undefined || heldQuestion === undefined) {
+      throw new Error("missing question");
+    }
+    for (const question of started.questions.slice(0, 6)) {
+      const scored = await request(app)
+        .post(`/jobs/${jobId}/interview-attempts/current/questions/${question.id}/answer`)
+        .set(auth(owner.token))
+        .send({ answer: `Answer ${question.position}` });
+      expect(scored.status).toBe(200);
+      expect(interviewAttemptSchema.parse(scored.body.attempt).status).toBe("in_progress");
+    }
+
+    let markLocked: () => void = () => {};
+    const locked = new Promise<void>((resolve) => {
+      markLocked = resolve;
+    });
+    let releaseHold: () => void = () => {};
+    const holdGate = new Promise<void>((resolve) => {
+      releaseHold = resolve;
+    });
+    const holder = prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "InterviewAttempt" WHERE "id" = ${attemptId} FOR UPDATE`;
+        markLocked();
+        await holdGate;
+        await tx.interviewQuestion.update({
+          where: { id: heldQuestion.id },
+          data: { answer: "from-holder", feedback: "holder-feedback", score: 70 },
+        });
+      },
+      { maxWait: 20_000, timeout: 20_000 },
+    );
+
+    try {
+      await Promise.race([
+        locked,
+        new Promise<never>((_resolve, reject) => {
+          setTimeout(() => {
+            reject(new Error("lock was not acquired"));
+          }, 5_000);
+        }),
+      ]);
+
+      let settled = false;
+      const pendingScore = request(app)
+        .post(
+          `/jobs/${jobId}/interview-attempts/current/questions/${waitingQuestion.id}/answer`,
+        )
+        .set(auth(owner.token))
+        .send({ answer: "I would add an index." })
+        .then((response) => {
+          settled = true;
+          return response;
+        });
+
+      await new Promise((resolve) => {
+        setTimeout(resolve, 1_000);
+      });
+      expect(settled).toBe(false);
+      const duringLock = await prisma.interviewQuestion.findUnique({
+        where: { id: waitingQuestion.id },
+      });
+      expect(duringLock?.answer).toBeNull();
+      expect(duringLock?.score).toBeNull();
+      expect((await prisma.interviewAttempt.findUnique({ where: { id: attemptId } }))?.status).toBe(
+        "in_progress",
+      );
+
+      releaseHold();
+      const scored = await pendingScore;
+      await holder;
+      expect(scored.status).toBe(200);
+      const attempt = interviewAttemptSchema.parse(scored.body.attempt);
+      expect(attempt.status).toBe("completed");
+      expect(attempt.questions.every((question) => question.score !== null)).toBe(true);
+      expect(attempt.questions.find((question) => question.id === waitingQuestion.id)?.score).toBe(80);
+      expect(attempt.questions.find((question) => question.id === heldQuestion.id)).toMatchObject({
+        answer: "from-holder",
+        feedback: "holder-feedback",
+        score: 70,
+      });
+      expect((await prisma.interviewAttempt.findUnique({ where: { id: attemptId } }))?.status).toBe(
+        "completed",
+      );
+    } finally {
+      releaseHold();
+    }
+  }, 20_000);
+
+  it("returns 409 when the same question is submitted twice at once", async () => {
+    const evaluationCalls: AnswerEvaluationModelInput[] = [];
+    const app = createApp({
+      jobAnalysisModel: createStubJobAnalysisModel(),
+      interviewQuestionModel: questionModel([]),
+      answerEvaluationModel: evaluationModel(evaluationCalls),
+    });
+    const owner = await registerAndLogin(app);
+    const jobId = await createCurrentJob(app, owner.token);
+    await seedPlan(jobId);
+    const created = await request(app)
+      .post(`/jobs/${jobId}/interview-attempts`)
+      .set(auth(owner.token))
+      .send({});
+    const question = interviewAttemptSchema.parse(created.body.attempt).questions[0];
+    if (question === undefined) {
+      throw new Error("missing question");
+    }
+    const path = `/jobs/${jobId}/interview-attempts/current/questions/${question.id}/answer`;
+    const [first, second] = await Promise.all([
+      request(app).post(path).set(auth(owner.token)).send({ answer: "I would add an index." }),
+      request(app).post(path).set(auth(owner.token)).send({ answer: "I would add an index." }),
+    ]);
+    const statuses = [first.status, second.status].sort((left, right) => left - right);
+    expect(statuses).toEqual([200, 409]);
+    const conflict = first.status === 409 ? first : second;
+    const success = first.status === 200 ? first : second;
+    expect(conflict.body).toEqual({ error: "Question already answered" });
+    const attempt = interviewAttemptSchema.parse(success.body.attempt);
+    expect(attempt.status).toBe("in_progress");
+    expect(attempt.questions[0]).toMatchObject({
+      answer: "I would add an index.",
+      feedback: "stub-feedback",
+      score: 80,
+    });
+    expect(attempt.questions.slice(1).every((item) => item.score === null)).toBe(true);
+    const stored = await prisma.interviewQuestion.findUnique({ where: { id: question.id } });
+    expect(stored?.answer).toBe("I would add an index.");
+    expect(stored?.feedback).toBe("stub-feedback");
+    expect(stored?.score).toBe(80);
+    expect((await prisma.interviewAttempt.findUnique({ where: { id: attempt.id } }))?.status).toBe(
+      "in_progress",
+    );
+    expect(evaluationCalls.length).toBeGreaterThan(0);
+  });
+
+  it("does not insert a second attempt when one completes while start is still generating", async () => {
+    let markEntered: () => void = () => {};
+    const entered = new Promise<void>((resolve) => {
+      markEntered = resolve;
+    });
+    let releaseGeneration: () => void = () => {};
+    const generationGate = new Promise<void>((resolve) => {
+      releaseGeneration = resolve;
+    });
+    let blocked = false;
+    const blockingQuestions: InterviewQuestionModel = {
+      async generate(input) {
+        if (!blocked) {
+          blocked = true;
+          markEntered();
+          await generationGate;
+        }
+        return {
+          questions: Array.from({ length: input.count }, (_, index) => ({
+            text: `${input.category} question ${index + 1}`,
+            category: "Frontend",
+            expectedConcepts: ["concept"],
+            rubric: "rubric",
+          })),
+        };
+      },
+    };
+    const blockingApp = createApp({
+      jobAnalysisModel: createStubJobAnalysisModel(),
+      interviewQuestionModel: blockingQuestions,
+    });
+    const fastApp = createApp({
+      jobAnalysisModel: createStubJobAnalysisModel(),
+      interviewQuestionModel: questionModel([]),
+      answerEvaluationModel: evaluationModel([]),
+    });
+    const owner = await registerAndLogin(blockingApp);
+    const jobId = await createCurrentJob(blockingApp, owner.token);
+    await seedPlan(jobId);
+
+    let settled = false;
+    const pendingStart = request(blockingApp)
+      .post(`/jobs/${jobId}/interview-attempts`)
+      .set(auth(owner.token))
+      .send({})
+      .then((response) => {
+        settled = true;
+        return response;
+      });
+
+    try {
+      await Promise.race([
+        entered,
+        new Promise<never>((_resolve, reject) => {
+          setTimeout(() => {
+            reject(new Error("question generation did not start"));
+          }, 5_000);
+        }),
+      ]);
+
+      const created = await request(fastApp)
+        .post(`/jobs/${jobId}/interview-attempts`)
+        .set(auth(owner.token))
+        .send({});
+      expect(created.status).toBe(200);
+      const started = interviewAttemptSchema.parse(created.body.attempt);
+      for (const question of started.questions) {
+        const scored = await request(fastApp)
+          .post(`/jobs/${jobId}/interview-attempts/current/questions/${question.id}/answer`)
+          .set(auth(owner.token))
+          .send({ answer: `Answer ${question.position}` });
+        expect(scored.status).toBe(200);
+      }
+      const read = await request(fastApp)
+        .get(`/jobs/${jobId}/interview-attempts/current`)
+        .set(auth(owner.token));
+      expect(read.status).toBe(200);
+      expect(interviewAttemptSchema.parse(read.body.attempt).status).toBe("completed");
+      expect(settled).toBe(false);
+
+      releaseGeneration();
+      const blockedStart = await pendingStart;
+      expect(blockedStart.status).toBe(409);
+      expect(blockedStart.body).toEqual({ error: "Interview attempt already completed" });
+      expect(await prisma.interviewAttempt.count({ where: { jobId } })).toBe(1);
+      expect((await prisma.interviewAttempt.findFirst({ where: { jobId } }))?.id).toBe(started.id);
+    } finally {
+      releaseGeneration();
+    }
+  }, 20_000);
 });

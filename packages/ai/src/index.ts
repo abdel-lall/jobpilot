@@ -42,3 +42,10 @@ export {
   type InterviewQuestionModel,
   type InterviewQuestionModelInput,
 } from "./interview-questions.js";
+export {
+  createGeminiAnswerEvaluationModel,
+  createStubAnswerEvaluationModel,
+  evaluateAnswer,
+  type AnswerEvaluationModel,
+  type AnswerEvaluationModelInput,
+} from "./answer-evaluation.js";

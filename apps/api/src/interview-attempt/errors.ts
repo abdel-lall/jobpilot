@@ -3,7 +3,10 @@ export type InterviewAttemptErrorCode =
   | "analysis_not_current"
   | "plan_not_current"
   | "already_in_progress"
-  | "generation_failed";
+  | "already_answered"
+  | "already_completed"
+  | "generation_failed"
+  | "evaluation_failed";
 
 export class InterviewAttemptError extends Error {
   readonly code: InterviewAttemptErrorCode;
