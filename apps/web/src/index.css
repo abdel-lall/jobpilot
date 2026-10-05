@@ -33,6 +33,9 @@
   --jp-secondary: #8ec1de;
   --jp-accent: #ceb5ff;
   --jp-mist: #d3d3ff;
+  --jp-navy: #3f5f9a;
+  --jp-canvas: #f4f5f7;
+  --jp-logout: #6b7280;
   --jp-ink: #172033;
   --jp-muted: #44506a;
   /* Same hue as --jp-primary. #80A8FF is 2.34:1 on white, so these darker stops carry text, buttons, borders, and focus. */
@@ -87,4 +90,21 @@
 .auth-focus:focus-visible {
   outline: 3px solid var(--jp-primary-border);
   outline-offset: 2px;
+}
+
+.shell-header {
+  box-shadow:
+    0 1px 2px rgb(23 32 51 / 6%),
+    0 4px 10px rgb(23 32 51 / 4%);
+}
+
+/* Inset so a full-bleed sidebar button does not spill past the viewport. */
+.shell-nav-idle:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: -3px;
+}
+
+.shell-nav-selected:focus-visible {
+  outline: 3px solid var(--jp-primary-border);
+  outline-offset: -3px;
 }

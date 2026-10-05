@@ -214,7 +214,9 @@ test("registers, restores the session, and logs out", async ({ page }) => {
   expect(meEmail).toBe(email);
   expect(meAuthorizations[0]).toBe(`Bearer ${loginAccessToken}`);
   await expect(page.getByTestId("signed-in")).toBeVisible();
-  await expect(page.getByTestId("user-email")).toHaveText(meEmail);
+  await expect(page.getByTestId("user-email")).toHaveCount(0);
+  await expect(page.getByRole("img", { name: "JobPilot" })).toBeVisible();
+  await expect(page.getByTestId("nav-profile")).toHaveAttribute("aria-current", "page");
   await expect(page.getByText("not-used@example.com")).toHaveCount(0);
 
   const visibleCookies = await page.evaluate(() => document.cookie);
@@ -255,7 +257,8 @@ test("registers, restores the session, and logs out", async ({ page }) => {
   const reloadRefresh = await reloadRefreshPromise;
   expect(reloadRefresh.status()).toBe(200);
   const reloadAccessToken = readAccessToken(await reloadRefresh.json());
-  await expect(page.getByTestId("user-email")).toHaveText(email);
+  await expect(page.getByTestId("signed-in")).toBeVisible();
+  await expect(page.getByTestId("nav-profile")).toHaveAttribute("aria-current", "page");
   expect(meAuthorizations.at(-1)).toBe(`Bearer ${reloadAccessToken}`);
 
   const logoutResponsePromise = page.waitForResponse(
@@ -287,7 +290,7 @@ test("stays signed out when logout fails", async ({ page }) => {
   await expect(page.getByTestId("register-confirmation")).toBeVisible();
   await fillForm(page, "Log in", email, password);
   await page.getByRole("button", { name: "Log in", exact: true }).click();
-  await expect(page.getByTestId("user-email")).toHaveText(email);
+  await expect(page.getByTestId("signed-in")).toBeVisible();
 
   const logoutSignals: {
     markArrived: (() => void) | null;

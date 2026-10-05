@@ -200,7 +200,7 @@ test("shows loading before empty, and keeps a pending section independent", asyn
   }
 
   await login(page, email);
-  await expect(page.getByTestId("user-email")).toHaveText(email);
+  await expect(page.getByTestId("signed-in")).toBeVisible();
   await expect(page.getByRole("button", { name: "Log out", exact: true })).toBeVisible();
   await expect(page.getByRole("heading").nth(0)).toHaveText("Skills");
   await expect(page.getByRole("heading").nth(1)).toHaveText("Education");

@@ -190,7 +190,7 @@ test("creates, reloads, edits, clears the URL, and deletes a job", async ({ page
   await expect(page.getByTestId("app-nav")).toHaveCount(0);
   await register(page, email);
   await login(page, email);
-  await expect(page.getByTestId("user-email")).toHaveText(email);
+  await expect(page.getByTestId("signed-in")).toBeVisible();
   await expect(page.getByRole("button", { name: "Log out", exact: true })).toBeVisible();
   await expect(page.getByTestId("nav-profile")).toHaveText("Profile");
   await expect(page.getByTestId("nav-dashboard")).toHaveText("Dashboard");
