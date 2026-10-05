@@ -40,8 +40,33 @@ type StoredAttempt = {
   id: string;
   jobId: string;
   status: "in_progress" | "completed";
+  createdAt: Date;
   questions: StoredQuestion[];
 };
+
+function isLaterCompleted(candidate: StoredAttempt, current: StoredAttempt): boolean {
+  const createdAt = candidate.createdAt.getTime() - current.createdAt.getTime();
+  if (createdAt !== 0) {
+    return createdAt > 0;
+  }
+  return candidate.id > current.id;
+}
+
+function selectCurrentAttempt(attempts: readonly StoredAttempt[]): StoredAttempt | undefined {
+  const inProgress = attempts.find((attempt) => attempt.status === "in_progress");
+  if (inProgress !== undefined) {
+    return inProgress;
+  }
+  return attempts.reduce<StoredAttempt | undefined>((latest, attempt) => {
+    if (attempt.status !== "completed") {
+      return latest;
+    }
+    if (latest === undefined || isLaterCompleted(attempt, latest)) {
+      return attempt;
+    }
+    return latest;
+  }, undefined);
+}
 
 function resolveAnswerEvaluationModel(
   override: AnswerEvaluationModel | undefined,
@@ -188,9 +213,6 @@ export async function startInterviewAttempt(
   if (existing.interviewAttempts.some((attempt) => attempt.status === "in_progress")) {
     throw new InterviewAttemptError("already_in_progress");
   }
-  if (existing.interviewAttempts.length > 0) {
-    throw new InterviewAttemptError("already_completed");
-  }
 
   const storedQuestionTexts = existing.interviewAttempts.flatMap((attempt) =>
     attempt.questions.map((question) => question.text),
@@ -221,9 +243,6 @@ export async function startInterviewAttempt(
       });
       if (attempts.some((item) => item.status === "in_progress")) {
         throw new InterviewAttemptError("already_in_progress");
-      }
-      if (attempts.length > 0) {
-        throw new InterviewAttemptError("already_completed");
       }
       const collision = await tx.interviewQuestion.findFirst({
         where: { jobId, normalizedText: { in: normalizedTexts } },
@@ -280,7 +299,7 @@ export async function readInterviewAttempt(
   if (existing === null) {
     throw new InterviewAttemptError("not_found");
   }
-  const attempt = existing.interviewAttempts[0];
+  const attempt = selectCurrentAttempt(existing.interviewAttempts);
   if (attempt === undefined) {
     throw new InterviewAttemptError("not_found");
   }
@@ -308,7 +327,7 @@ export async function submitInterviewAnswer(
   if (existing === null) {
     throw new InterviewAttemptError("not_found");
   }
-  const attempt = existing.interviewAttempts[0];
+  const attempt = selectCurrentAttempt(existing.interviewAttempts);
   if (attempt === undefined) {
     throw new InterviewAttemptError("not_found");
   }

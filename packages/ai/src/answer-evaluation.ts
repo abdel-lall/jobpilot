@@ -61,7 +61,10 @@ export async function evaluateAnswer(
 
 export function createStubAnswerEvaluationModel(): AnswerEvaluationModel {
   return {
-    async evaluate() {
+    async evaluate(input) {
+      if (input.answer === "fail") {
+        return { feedback: "stub-feedback", score: 0 };
+      }
       return { feedback: "stub-feedback", score: 80 };
     },
   };

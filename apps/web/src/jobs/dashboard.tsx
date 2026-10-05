@@ -63,8 +63,12 @@ function requireToken(accessToken: string | null): string {
   return accessToken;
 }
 
-function notAvailable(value: boolean | null): "Not available" {
-  return value === false || value === null ? "Not available" : "Not available";
+function scoreLabel(score: number | null): string {
+  return score === null ? "Not available" : String(score);
+}
+
+function readinessLabel(badge: "Interview Ready" | null): string {
+  return badge === null ? "Not available" : badge;
 }
 
 function tailoredResumeLabel(present: boolean): "Present" | "Not available" {
@@ -339,10 +343,10 @@ function JobRow({
         </span>
       </p>
       <p>
-        Score <span data-testid="job-score">{notAvailable(job.status.latestOverallScore)}</span>
+        Score <span data-testid="job-score">{scoreLabel(job.status.latestOverallScore)}</span>
       </p>
       <p>
-        Readiness <span data-testid="job-readiness">{notAvailable(job.status.readinessBadge)}</span>
+        Readiness <span data-testid="job-readiness">{readinessLabel(job.status.readinessBadge)}</span>
       </p>
       {resumeOpen ? (
         <TailoredResumePanel

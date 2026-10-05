@@ -29,8 +29,8 @@ export const jobStatusSchema = z
     analysisCurrent: z.boolean(),
     tailoredResumePresent: z.boolean(),
     interviewPlanPresent: z.boolean(),
-    latestOverallScore: z.null(),
-    readinessBadge: z.null(),
+    latestOverallScore: z.number().min(0).max(100).nullable(),
+    readinessBadge: z.literal("Interview Ready").nullable(),
   })
   .strict();
 

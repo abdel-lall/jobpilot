@@ -45,6 +45,16 @@ describe("answer evaluation", () => {
     expect(result).toEqual({ feedback: "stub-feedback", score: 80 });
   });
 
+  it("returns score 0 for the fail sentinel", async () => {
+    const result = await evaluateAnswer(
+      questionText,
+      rubric,
+      "fail",
+      createStubAnswerEvaluationModel(),
+    );
+    expect(result).toEqual({ feedback: "stub-feedback", score: 0 });
+  });
+
   it("accepts scores 0, 80, and 100, and rejects -1, 101, and 1.5", () => {
     expect(answerEvaluationModelOutputSchema.safeParse({ feedback: "ok", score: 0 }).success).toBe(
       true,

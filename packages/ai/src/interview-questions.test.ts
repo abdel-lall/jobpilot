@@ -1,5 +1,6 @@
 import {
   interviewPlanSchema,
+  normalizeQuestionText,
   type InterviewPlan,
   type InterviewPlanCategory,
 } from "@jobpilot/shared";
@@ -211,5 +212,44 @@ describe("interview question workflow", () => {
     ]);
     expect(result.every((question) => question.expectedConcepts[0] === "stub-concept")).toBe(true);
     expect(result.every((question) => question.rubric === "stub-rubric")).toBe(true);
+  });
+
+  it("returns eight new stub texts when the phase 16 texts are already stored", async () => {
+    const plan = interviewPlanSchema.parse({
+      categories: ["Backend", "Behavioral questions"],
+      interviewTopics: ["stub-topic-1", "stub-topic-2"],
+    });
+    const stored = [
+      "Stub Backend question 1",
+      "Stub Backend question 2",
+      "Stub Backend question 3",
+      "Stub Backend question 4",
+      "Stub Behavioral questions question 1",
+      "Stub Behavioral questions question 2",
+      "Stub Behavioral questions question 3",
+      "Stub Behavioral questions question 4",
+    ];
+
+    const result = await generateInterviewQuestions(
+      plan,
+      stored,
+      createStubInterviewQuestionModel(),
+    );
+
+    expect(result).toHaveLength(8);
+    const storedNormalized = new Set(stored.map((text) => normalizeQuestionText(text)));
+    expect(
+      result.every((question) => !storedNormalized.has(normalizeQuestionText(question.text))),
+    ).toBe(true);
+    expect(result.map((question) => question.text)).toEqual([
+      "Stub Backend question 1 retake 2",
+      "Stub Backend question 2 retake 2",
+      "Stub Backend question 3 retake 2",
+      "Stub Backend question 4 retake 2",
+      "Stub Behavioral questions question 1 retake 2",
+      "Stub Behavioral questions question 2 retake 2",
+      "Stub Behavioral questions question 3 retake 2",
+      "Stub Behavioral questions question 4 retake 2",
+    ]);
   });
 });

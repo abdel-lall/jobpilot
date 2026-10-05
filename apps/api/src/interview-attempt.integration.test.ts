@@ -149,6 +149,40 @@ async function seedPlan(jobId: string, document: unknown = threeCategoryPlan): P
   });
 }
 
+async function answerAll(
+  app: App,
+  token: string,
+  jobId: string,
+  questions: { id: string }[],
+  answer: string,
+): Promise<void> {
+  for (const question of questions) {
+    const scored = await request(app)
+      .post(`/jobs/${jobId}/interview-attempts/current/questions/${question.id}/answer`)
+      .set(auth(token))
+      .send({ answer });
+    expect(scored.status).toBe(200);
+  }
+}
+
+function uniqueQuestionModel(): InterviewQuestionModel {
+  return {
+    async generate(input) {
+      return {
+        questions: Array.from({ length: input.count }, (_, index) => {
+          const base = `${input.category} question ${index + 1}`;
+          return {
+            text: input.avoidedQuestionTexts.includes(base) ? `${base} retake` : base,
+            category: "Frontend",
+            expectedConcepts: ["concept"],
+            rubric: "rubric",
+          };
+        }),
+      };
+    },
+  };
+}
+
 describe("interview attempt", () => {
   afterAll(async () => {
     await prisma.user.deleteMany({ where: { email: { in: createdEmails } } });
@@ -608,7 +642,7 @@ describe("interview attempt", () => {
     );
   });
 
-  it("marks the attempt completed only on the eighth score and rejects another start", async () => {
+  it("marks the attempt completed only on the eighth score and rejects a repeated-text retake", async () => {
     const evaluationCalls: AnswerEvaluationModelInput[] = [];
     const questionCalls: InterviewQuestionModelInput[] = [];
     const app = createApp({
@@ -624,7 +658,6 @@ describe("interview attempt", () => {
       .set(auth(owner.token))
       .send({});
     const started = interviewAttemptSchema.parse(created.body.attempt);
-    const callsAfterStart = questionCalls.length;
 
     for (let index = 0; index < started.questions.length; index += 1) {
       const question = started.questions[index];
@@ -655,16 +688,15 @@ describe("interview attempt", () => {
     expect(completed.questions.every((item) => typeof item.score === "number")).toBe(true);
 
     const listed = await request(app).get(`/jobs/${jobId}`).set(auth(owner.token));
-    expect(listed.body.job.status.latestOverallScore).toBeNull();
-    expect(listed.body.job.status.readinessBadge).toBeNull();
+    expect(listed.body.job.status.latestOverallScore).toBe(80);
+    expect(listed.body.job.status.readinessBadge).toBe("Interview Ready");
 
     const again = await request(app)
       .post(`/jobs/${jobId}/interview-attempts`)
       .set(auth(owner.token))
       .send({});
-    expect(again.status).toBe(409);
-    expect(again.body).toEqual({ error: "Interview attempt already completed" });
-    expect(questionCalls).toHaveLength(callsAfterStart);
+    expect(again.status).toBe(502);
+    expect(again.body).toEqual({ error: "Interview question generation failed" });
     expect(evaluationCalls).toHaveLength(8);
     expect(await prisma.interviewAttempt.count({ where: { jobId } })).toBe(1);
   });
@@ -1003,12 +1035,174 @@ describe("interview attempt", () => {
 
       releaseGeneration();
       const blockedStart = await pendingStart;
-      expect(blockedStart.status).toBe(409);
-      expect(blockedStart.body).toEqual({ error: "Interview attempt already completed" });
+      expect(blockedStart.status).toBe(502);
+      expect(blockedStart.body).toEqual({ error: "Interview question generation failed" });
       expect(await prisma.interviewAttempt.count({ where: { jobId } })).toBe(1);
       expect((await prisma.interviewAttempt.findFirst({ where: { jobId } }))?.id).toBe(started.id);
     } finally {
       releaseGeneration();
     }
   }, 20_000);
+
+  it("stores 79.875 and no badge when one score is 79", async () => {
+    let calls = 0;
+    const app = createApp({
+      jobAnalysisModel: createStubJobAnalysisModel(),
+      interviewQuestionModel: questionModel([]),
+      answerEvaluationModel: {
+        async evaluate() {
+          calls += 1;
+          return { feedback: "stub-feedback", score: calls === 1 ? 79 : 80 };
+        },
+      },
+    });
+    const owner = await registerAndLogin(app);
+    const jobId = await createCurrentJob(app, owner.token);
+    await seedPlan(jobId);
+    const created = await request(app)
+      .post(`/jobs/${jobId}/interview-attempts`)
+      .set(auth(owner.token))
+      .send({});
+    const started = interviewAttemptSchema.parse(created.body.attempt);
+    await answerAll(app, owner.token, jobId, started.questions, "I would add an index.");
+
+    const listed = await request(app).get(`/jobs/${jobId}`).set(auth(owner.token));
+    expect(listed.status).toBe(200);
+    expect(listed.body.job.status.latestOverallScore).toBe(79.875);
+    expect(listed.body.job.status.readinessBadge).toBeNull();
+  });
+
+  it("keeps history, freezes the dashboard during a retake, and clears the badge when the retake fails", async () => {
+    const app = createApp({
+      jobAnalysisModel: createStubJobAnalysisModel(),
+      interviewQuestionModel: uniqueQuestionModel(),
+      answerEvaluationModel: createStubAnswerEvaluationModel(),
+    });
+    const owner = await registerAndLogin(app);
+    const jobId = await createCurrentJob(app, owner.token);
+    await seedPlan(jobId);
+    const created = await request(app)
+      .post(`/jobs/${jobId}/interview-attempts`)
+      .set(auth(owner.token))
+      .send({});
+    const started = interviewAttemptSchema.parse(created.body.attempt);
+    await answerAll(app, owner.token, jobId, started.questions, "I would add an index.");
+
+    const completedRead = await request(app)
+      .get(`/jobs/${jobId}/interview-attempts/current`)
+      .set(auth(owner.token));
+    const completed = interviewAttemptSchema.parse(completedRead.body.attempt);
+    expect(completed.id).toBe(started.id);
+    expect(completed.status).toBe("completed");
+
+    const passed = await request(app).get(`/jobs/${jobId}`).set(auth(owner.token));
+    expect(passed.body.job.status.latestOverallScore).toBe(80);
+    expect(passed.body.job.status.readinessBadge).toBe("Interview Ready");
+
+    const retake = await request(app)
+      .post(`/jobs/${jobId}/interview-attempts`)
+      .set(auth(owner.token))
+      .send({});
+    expect(retake.status).toBe(200);
+    const second = interviewAttemptSchema.parse(retake.body.attempt);
+    expect(second.status).toBe("in_progress");
+    expect(second.id).not.toBe(started.id);
+    const firstTexts = new Set(started.questions.map((question) => question.text));
+    expect(second.questions.every((question) => !firstTexts.has(question.text))).toBe(true);
+    expect(second.questions.every((question) => question.score === null)).toBe(true);
+
+    const during = await request(app).get(`/jobs/${jobId}`).set(auth(owner.token));
+    expect(during.body.job.status.latestOverallScore).toBe(80);
+    expect(during.body.job.status.readinessBadge).toBe("Interview Ready");
+    const current = await request(app)
+      .get(`/jobs/${jobId}/interview-attempts/current`)
+      .set(auth(owner.token));
+    expect(interviewAttemptSchema.parse(current.body.attempt).id).toBe(second.id);
+
+    const oldQuestionId = started.questions[0]?.id;
+    if (oldQuestionId === undefined) {
+      throw new Error("missing question");
+    }
+    const stale = await request(app)
+      .post(`/jobs/${jobId}/interview-attempts/current/questions/${oldQuestionId}/answer`)
+      .set(auth(owner.token))
+      .send({ answer: "fail" });
+    expect(stale.status).toBe(404);
+    expect(stale.body).toEqual({ error: "Not found" });
+
+    await answerAll(app, owner.token, jobId, second.questions, "fail");
+    const failed = await request(app).get(`/jobs/${jobId}`).set(auth(owner.token));
+    expect(failed.body.job.status.latestOverallScore).toBe(0);
+    expect(failed.body.job.status.readinessBadge).toBeNull();
+
+    const stored = await prisma.interviewAttempt.findMany({
+      where: { jobId },
+      orderBy: { createdAt: "asc" },
+      include: { questions: true },
+    });
+    expect(stored).toHaveLength(2);
+    expect(stored[0]?.questions.every((question) => question.score === 80)).toBe(true);
+    expect(stored[1]?.questions.every((question) => question.score === 0)).toBe(true);
+    const firstNormalized = new Set(stored[0]?.questions.map((question) => question.normalizedText));
+    expect(
+      stored[1]?.questions.every((question) => !firstNormalized.has(question.normalizedText)),
+    ).toBe(true);
+  });
+
+  it("does not award the badge on another job", async () => {
+    const app = createApp({
+      jobAnalysisModel: createStubJobAnalysisModel(),
+      interviewQuestionModel: questionModel([]),
+      answerEvaluationModel: createStubAnswerEvaluationModel(),
+    });
+    const owner = await registerAndLogin(app);
+    const readyId = await createCurrentJob(app, owner.token);
+    const otherId = await createCurrentJob(app, owner.token);
+    await seedPlan(readyId);
+    const created = await request(app)
+      .post(`/jobs/${readyId}/interview-attempts`)
+      .set(auth(owner.token))
+      .send({});
+    const started = interviewAttemptSchema.parse(created.body.attempt);
+    await answerAll(app, owner.token, readyId, started.questions, "I would add an index.");
+
+    const ready = await request(app).get(`/jobs/${readyId}`).set(auth(owner.token));
+    expect(ready.body.job.status.latestOverallScore).toBe(80);
+    expect(ready.body.job.status.readinessBadge).toBe("Interview Ready");
+    const other = await request(app).get(`/jobs/${otherId}`).set(auth(owner.token));
+    expect(other.body.job.status.latestOverallScore).toBeNull();
+    expect(other.body.job.status.readinessBadge).toBeNull();
+  });
+
+  it("removes analysis, tailored resume, plan, attempts, and questions when the job is deleted", async () => {
+    const app = createApp({
+      jobAnalysisModel: createStubJobAnalysisModel(),
+      interviewQuestionModel: questionModel([]),
+    });
+    const owner = await registerAndLogin(app);
+    const other = await registerAndLogin(app);
+    const jobId = await createCurrentJob(app, owner.token);
+    const otherJobId = await createCurrentJob(app, other.token);
+    await seedPlan(jobId);
+    await prisma.tailoredResume.create({
+      data: { jobId, document: { marker: "phase18-resume" } },
+    });
+    const created = await request(app)
+      .post(`/jobs/${jobId}/interview-attempts`)
+      .set(auth(owner.token))
+      .send({});
+    expect(created.status).toBe(200);
+
+    const deleted = await request(app).delete(`/jobs/${jobId}`).set(auth(owner.token));
+    expect(deleted.status).toBe(204);
+    expect(await prisma.job.count({ where: { id: jobId } })).toBe(0);
+    expect(await prisma.jobAnalysis.count({ where: { jobId } })).toBe(0);
+    expect(await prisma.tailoredResume.count({ where: { jobId } })).toBe(0);
+    expect(await prisma.interviewPlan.count({ where: { jobId } })).toBe(0);
+    expect(await prisma.interviewAttempt.count({ where: { jobId } })).toBe(0);
+    expect(await prisma.interviewQuestion.count({ where: { jobId } })).toBe(0);
+    const remaining = await request(app).get(`/jobs/${otherJobId}`).set(auth(other.token));
+    expect(remaining.status).toBe(200);
+    expect(remaining.body.job.id).toBe(otherJobId);
+  });
 });

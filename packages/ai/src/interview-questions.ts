@@ -172,13 +172,32 @@ export async function generateInterviewQuestions(
   return questions;
 }
 
+function stubQuestionText(
+  category: string,
+  index: number,
+  avoidedQuestionTexts: readonly string[],
+): string {
+  const avoided = new Set(avoidedQuestionTexts.map((text) => normalizeQuestionText(text)));
+  const base = `Stub ${category} question ${index}`;
+  if (!avoided.has(normalizeQuestionText(base))) {
+    return base;
+  }
+  let retake = 2;
+  let text = `${base} retake ${retake}`;
+  while (avoided.has(normalizeQuestionText(text))) {
+    retake += 1;
+    text = `${base} retake ${retake}`;
+  }
+  return text;
+}
+
 export function createStubInterviewQuestionModel(): InterviewQuestionModel {
   return {
     async generate(input) {
       const questions = [];
       for (let index = 1; index <= input.count; index += 1) {
         questions.push({
-          text: `Stub ${input.category} question ${index}`,
+          text: stubQuestionText(input.category, index, input.avoidedQuestionTexts),
           category: "Frontend",
           expectedConcepts: ["stub-concept"],
           rubric: "stub-rubric",

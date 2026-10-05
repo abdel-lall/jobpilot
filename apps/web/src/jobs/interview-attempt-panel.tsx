@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { requestErrorMessage } from "@/jobs/requests";
+import { jobsQueryKey, requestErrorMessage } from "@/jobs/requests";
 import {
   interviewAttemptQueryKey,
   readInterviewAttempt,
@@ -139,9 +139,12 @@ export function InterviewAttemptPanel({
       }
       return submitInterviewAnswer(token, jobId, input.questionId, input.answer);
     },
-    onSuccess: async (attempt) => {
+    onSuccess: async (saved) => {
       await queryClient.cancelQueries({ queryKey });
-      queryClient.setQueryData(queryKey, attempt);
+      queryClient.setQueryData(queryKey, saved);
+      if (saved.status === "completed") {
+        await queryClient.refetchQueries({ queryKey: jobsQueryKey(userId) });
+      }
     },
   });
 
@@ -167,7 +170,7 @@ export function InterviewAttemptPanel({
           }}
         />
       ) : null}
-      {showEmpty ? (
+      {showEmpty || attempt?.status === "completed" ? (
         <Button
           type="button"
           data-testid="start-interview-attempt"
