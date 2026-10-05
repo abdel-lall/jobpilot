@@ -101,4 +101,16 @@ export const tailoredResumeSchema = z
   })
   .strict();
 
+// Gemini rejects a response schema when these section arrays declare maxItems: 50.
+// Nested array limits stay. tailoredResumeSchema still enforces every limit after generation.
+export const tailoredResumeStructuredSchema = z
+  .object({
+    skills: z.array(skillItemSchema),
+    experience: z.array(experienceItemSchema),
+    projects: z.array(projectItemSchema),
+    education: z.array(educationItemSchema),
+    certifications: z.array(certificationItemSchema),
+  })
+  .strict();
+
 export type TailoredResume = z.infer<typeof tailoredResumeSchema>;

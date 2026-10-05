@@ -85,5 +85,9 @@ export {
   type UpdateJobBody,
 } from "./job.js";
 
-export { tailoredResumeSchema, type TailoredResume } from "./tailored-resume.js";
+export {
+  tailoredResumeSchema,
+  tailoredResumeStructuredSchema,
+  type TailoredResume,
+} from "./tailored-resume.js";
 

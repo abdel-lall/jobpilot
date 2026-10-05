@@ -43,7 +43,7 @@ function ResumeDocument({ resume }: { resume: TailoredResume }) {
         <ul className="grid gap-2">
           {resume.skills.map((skill) => (
             <li key={skill.sourceId} data-testid="resume-skill">
-              {visibleText([skill.name, skill.sourceId])}
+              {skill.name}
             </li>
           ))}
         </ul>
@@ -59,7 +59,6 @@ function ResumeDocument({ resume }: { resume: TailoredResume }) {
                 item.endDate,
                 ...item.accomplishments,
                 ...item.technologies,
-                item.sourceId,
               ])}
             </li>
           ))}
@@ -77,7 +76,6 @@ function ResumeDocument({ resume }: { resume: TailoredResume }) {
                 item.endDate,
                 ...item.accomplishments,
                 ...item.technologies,
-                item.sourceId,
               ])}
             </li>
           ))}
@@ -93,7 +91,6 @@ function ResumeDocument({ resume }: { resume: TailoredResume }) {
                 item.fieldOfStudy,
                 item.startDate,
                 item.endDate,
-                item.sourceId,
               ])}
             </li>
           ))}
@@ -103,7 +100,7 @@ function ResumeDocument({ resume }: { resume: TailoredResume }) {
         <ul className="grid gap-2">
           {resume.certifications.map((item) => (
             <li key={item.sourceId} data-testid="resume-certification">
-              {visibleText([item.name, item.issuer, item.issuedOn, item.expiresOn, item.sourceId])}
+              {visibleText([item.name, item.issuer, item.issuedOn, item.expiresOn])}
             </li>
           ))}
         </ul>

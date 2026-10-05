@@ -194,6 +194,92 @@ test("generates, replaces, and clears a tailored resume", async ({ page }) => {
   await expect(panel).toBeVisible();
 });
 
+test("hides source ids and shows resume facts", async ({ page }) => {
+  const sourceIds = {
+    skill: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    experience: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    project: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    education: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+    certification: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+  };
+  const resume = {
+    skills: [{ sourceId: sourceIds.skill, name: "TypeScript" }],
+    experience: [
+      {
+        sourceId: sourceIds.experience,
+        employer: "Northstar Technologies",
+        jobTitle: "Software Engineer",
+        startDate: "2023-01-01",
+        endDate: null,
+        accomplishments: ["Built APIs"],
+        technologies: ["TypeScript"],
+      },
+    ],
+    projects: [
+      {
+        sourceId: sourceIds.project,
+        name: "SupportAI",
+        description: "Grounded assistant",
+        url: "https://example.com/support",
+        startDate: "2025-02-06",
+        endDate: null,
+        accomplishments: ["Built retrieval"],
+        technologies: ["Python"],
+      },
+    ],
+    education: [
+      {
+        sourceId: sourceIds.education,
+        institution: "Lakeview University",
+        degree: "Bachelor of Science",
+        fieldOfStudy: "Computer Science",
+        startDate: "2023-02-08",
+        endDate: "2026-09-01",
+      },
+    ],
+    certifications: [
+      {
+        sourceId: sourceIds.certification,
+        name: "AWS Certified Cloud Practitioner",
+        issuer: "Amazon Web Services",
+        issuedOn: "2025-06-05",
+        expiresOn: null,
+      },
+    ],
+  };
+
+  await registerAndLogin(page);
+  const row = await createExampleJob(page);
+  await page.route(isTailoredResume, async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    await fulfillJson(route, 200, { resume });
+  });
+  await row.getByTestId("open-tailored-resume").click();
+  const panel = page.getByTestId("tailored-resume-panel");
+
+  await expect(panel.getByTestId("resume-skill")).toHaveText("TypeScript");
+  await expect(panel.getByTestId("resume-experience")).toHaveText(
+    "Northstar Technologies Software Engineer 2023-01-01 Built APIs TypeScript",
+  );
+  await expect(panel.getByTestId("resume-project")).toHaveText(
+    "SupportAI Grounded assistant https://example.com/support 2025-02-06 Built retrieval Python",
+  );
+  await expect(panel.getByTestId("resume-education")).toHaveText(
+    "Lakeview University Bachelor of Science Computer Science 2023-02-08 2026-09-01",
+  );
+  await expect(panel.getByTestId("resume-certification")).toHaveText(
+    "AWS Certified Cloud Practitioner Amazon Web Services 2025-06-05",
+  );
+
+  const text = await panel.innerText();
+  for (const sourceId of Object.values(sourceIds)) {
+    expect(text.includes(sourceId)).toBe(false);
+  }
+});
+
 test("shows the generate error when no resume exists", async ({ page }) => {
   await registerAndLogin(page);
   const row = await createExampleJob(page);

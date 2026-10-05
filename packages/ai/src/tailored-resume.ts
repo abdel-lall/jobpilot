@@ -2,6 +2,7 @@ import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import {
   tailoredResumeSchema,
+  tailoredResumeStructuredSchema,
   type JobAnalysis,
   type TailoredResume,
 } from "@jobpilot/shared";
@@ -192,6 +193,14 @@ function analysisJson(analysis: JobAnalysis): string {
 
 function resumePrompt(analysis: JobAnalysis, toolResults: ResumeToolResults): string {
   return `Write one tailored resume for this job analysis. Use only the MCP tool results below. Do not add numeric metrics, technologies, employers, job titles, dates, or accomplishments that are absent from those results. Each item must cite the source profile record id from the tool results.
+
+Copy nullable source fields exactly. When the source value is null, output JSON null. Never invent a substitute date, URL, placeholder, the string "Present", or the current date. "Present" is display text only and must not be stored or returned.
+- experience endDate: if the source endDate is null, output null
+- project url: if the source url is null, output null
+- project startDate: if the source startDate is null, output null
+- project endDate: if the source endDate is null, output null
+- education endDate: if the source endDate is null, output null
+- certification expiresOn: if the source expiresOn is null, output null
 
 Job analysis:
 ${analysisJson(analysis)}
@@ -407,7 +416,7 @@ export function createGeminiResumeModel(apiKey: string, modelName: string): Resu
     apiKey,
     model: modelName,
   });
-  const structured = chat.withStructuredOutput(tailoredResumeSchema);
+  const structured = chat.withStructuredOutput(tailoredResumeStructuredSchema);
   return {
     async write(input) {
       return structured.invoke(input.prompt);

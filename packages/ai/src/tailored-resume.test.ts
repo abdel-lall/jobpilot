@@ -1,5 +1,10 @@
 import { toJsonSchema } from "@langchain/core/utils/json_schema";
-import { tailoredResumeSchema, type JobAnalysis, type TailoredResume } from "@jobpilot/shared";
+import {
+  tailoredResumeSchema,
+  tailoredResumeStructuredSchema,
+  type JobAnalysis,
+  type TailoredResume,
+} from "@jobpilot/shared";
 import { describe, expect, it } from "vitest";
 import {
   assertTailoredResumeGrounded,
@@ -25,11 +30,43 @@ function containsSchemaRef(value: unknown): boolean {
   return Object.entries(value).some(([key, nested]) => key === "$ref" || containsSchemaRef(nested));
 }
 
+function collectMaxItems(value: unknown): number[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => collectMaxItems(item));
+  }
+  if (typeof value !== "object" || value === null) {
+    return [];
+  }
+  const found: number[] = [];
+  for (const [key, nested] of Object.entries(value)) {
+    if (key === "maxItems" && typeof nested === "number") {
+      found.push(nested);
+    } else {
+      found.push(...collectMaxItems(nested));
+    }
+  }
+  return found;
+}
+
 describe("tailored resume structured output", () => {
   it("converts the schema to JSON Schema without $ref", () => {
     const schema: unknown = toJsonSchema(tailoredResumeSchema);
 
     expect(containsSchemaRef(schema)).toBe(false);
+    expect(schema).toMatchObject({
+      type: "object",
+      properties: Object.fromEntries(resumeSections.map((section) => [section, { type: "array" }])),
+    });
+    expect(collectMaxItems(schema)).toEqual(expect.arrayContaining([50, 20, 30]));
+  });
+
+  it("converts the Gemini schema without $ref or large maxItems", () => {
+    const schema: unknown = toJsonSchema(tailoredResumeStructuredSchema);
+    const maxItems = collectMaxItems(schema);
+
+    expect(containsSchemaRef(schema)).toBe(false);
+    expect(maxItems.some((value) => value >= 50)).toBe(false);
+    expect(maxItems).toEqual(expect.arrayContaining([20, 30]));
     expect(schema).toMatchObject({
       type: "object",
       properties: Object.fromEntries(resumeSections.map((section) => [section, { type: "array" }])),
@@ -175,6 +212,60 @@ const copiedResume: TailoredResume = {
     },
   ],
 };
+
+describe("tailored resume strict validation", () => {
+  it("parses a valid resume and rejects arrays above the existing limits", () => {
+    expect(tailoredResumeSchema.parse(copiedResume)).toEqual(copiedResume);
+
+    for (const section of resumeSections) {
+      const item = copiedResume[section][0];
+      expect(
+        tailoredResumeSchema.safeParse({
+          ...copiedResume,
+          [section]: Array.from({ length: 51 }, () => item),
+        }).success,
+      ).toBe(false);
+    }
+
+    const experience = copiedResume.experience[0];
+    expect(experience).toBeDefined();
+    expect(
+      tailoredResumeSchema.safeParse({
+        ...copiedResume,
+        experience: [
+          {
+            ...experience,
+            accomplishments: Array.from({ length: 21 }, () => "Led the API migration"),
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      tailoredResumeSchema.safeParse({
+        ...copiedResume,
+        experience: [
+          {
+            ...experience,
+            technologies: Array.from({ length: 31 }, () => "TypeScript"),
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects oversized model output before the workflow returns a resume", async () => {
+    const model: ResumeTailoringModel = {
+      async write() {
+        return {
+          ...copiedResume,
+          skills: Array.from({ length: 51 }, () => copiedResume.skills[0]),
+        };
+      },
+    };
+
+    await expect(tailorResume(analysis, recordingTools(toolResults, []), model)).rejects.toThrow();
+  });
+});
 
 function recordingTools(results: ResumeToolResults, events: string[]): ResumeToolClient {
   return {
@@ -355,6 +446,34 @@ describe("tailored resume workflow", () => {
     expect(JSON.stringify(result).includes("Not Copied")).toBe(false);
   });
 
+  it("tells the model to preserve null source fields exactly", async () => {
+    let prompt = "";
+    const model: ResumeTailoringModel = {
+      async write(input) {
+        prompt = input.prompt;
+        return createStubResumeModel().write(input);
+      },
+    };
+
+    const result = await tailorResume(analysis, recordingTools(toolResults, []), model);
+
+    expect(prompt).toContain("When the source value is null, output JSON null");
+    expect(prompt).toContain("experience endDate: if the source endDate is null, output null");
+    expect(prompt).toContain("project url: if the source url is null, output null");
+    expect(prompt).toContain("project startDate: if the source startDate is null, output null");
+    expect(prompt).toContain("project endDate: if the source endDate is null, output null");
+    expect(prompt).toContain("education endDate: if the source endDate is null, output null");
+    expect(prompt).toContain("certification expiresOn: if the source expiresOn is null, output null");
+    expect(prompt).toContain('the string "Present"');
+    expect(prompt).toContain("current date");
+    expect(result.experience[0]?.endDate).toBeNull();
+    expect(result.projects[0]?.url).toBeNull();
+    expect(result.projects[0]?.startDate).toBeNull();
+    expect(result.projects[0]?.endDate).toBeNull();
+    expect(result.education[0]?.endDate).toBeNull();
+    expect(result.certifications[0]?.expiresOn).toBeNull();
+  });
+
   it("rejects an extra model key and invalid tool JSON before write", async () => {
     const extra: ResumeTailoringModel = {
       async write() {
@@ -506,6 +625,66 @@ describe("tailored resume grounding", () => {
     expect(() =>
       assertTailoredResumeGrounded(
         withExperience({ accomplishments: ["Won a hackathon"] }),
+        profile,
+        keywordAnalysis,
+      ),
+    ).toThrow();
+  });
+
+  it("accepts null source fields and rejects invented replacements", () => {
+    const resume = exactResume();
+    expect(resume.experience[0]?.endDate).toBeNull();
+    expect(resume.projects[0]?.url).toBeNull();
+    expect(resume.projects[0]?.startDate).toBeNull();
+    expect(resume.projects[0]?.endDate).toBeNull();
+    expect(resume.education[0]?.endDate).toBeNull();
+    expect(resume.certifications[0]?.expiresOn).toBeNull();
+    expect(() => assertTailoredResumeGrounded(resume, profile, keywordAnalysis)).not.toThrow();
+
+    expect(() =>
+      assertTailoredResumeGrounded(withExperience({ endDate: "2026-10-05" }), profile, keywordAnalysis),
+    ).toThrow();
+    expect(() =>
+      assertTailoredResumeGrounded(withExperience({ endDate: "Present" }), profile, keywordAnalysis),
+    ).toThrow();
+
+    const project = resume.projects[0];
+    const education = resume.education[0];
+    const certification = resume.certifications[0];
+    if (project === undefined || education === undefined || certification === undefined) {
+      throw new Error("expected resume sections");
+    }
+    expect(() =>
+      assertTailoredResumeGrounded(
+        { ...resume, projects: [{ ...project, url: "https://example.com/no-url" }] },
+        profile,
+        keywordAnalysis,
+      ),
+    ).toThrow();
+    expect(() =>
+      assertTailoredResumeGrounded(
+        { ...resume, projects: [{ ...project, startDate: "2024-01-01" }] },
+        profile,
+        keywordAnalysis,
+      ),
+    ).toThrow();
+    expect(() =>
+      assertTailoredResumeGrounded(
+        { ...resume, projects: [{ ...project, endDate: "2026-10-05" }] },
+        profile,
+        keywordAnalysis,
+      ),
+    ).toThrow();
+    expect(() =>
+      assertTailoredResumeGrounded(
+        { ...resume, education: [{ ...education, endDate: "2020-05-15" }] },
+        profile,
+        keywordAnalysis,
+      ),
+    ).toThrow();
+    expect(() =>
+      assertTailoredResumeGrounded(
+        { ...resume, certifications: [{ ...certification, expiresOn: "2026-07-24" }] },
         profile,
         keywordAnalysis,
       ),
