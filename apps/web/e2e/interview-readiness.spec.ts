@@ -64,8 +64,16 @@ async function registerAndLogin(page: Page): Promise<string> {
   return email;
 }
 
+async function openDetails(page: Page, row: Locator): Promise<Locator> {
+  await row.getByTestId("open-job-details").click();
+  const details = page.getByTestId("job-details");
+  await expect(details).toBeVisible();
+  return details;
+}
+
 async function createExampleJob(page: Page): Promise<Locator> {
   await page.getByTestId("nav-dashboard").click();
+  await page.getByTestId("open-add-job").click();
   const form = page.getByRole("form", { name: "Add job" });
   await form.getByLabel("Company name").fill("Example Co");
   await form.getByLabel("Job title").fill("Engineer");
@@ -76,9 +84,11 @@ async function createExampleJob(page: Page): Promise<Locator> {
   const row = page.getByTestId("job-row");
   await expect(row.getByTestId("job-company")).toHaveText("Example Co");
   await expect(row.getByTestId("job-title")).toHaveText("Engineer");
-  await expect(row.getByTestId("job-description")).toHaveText("Build APIs.");
   await expect(row.getByTestId("job-location")).toHaveText("Remote");
-  await expect(row.getByTestId("job-url")).toHaveText("https://example.com/jobs/engineer");
+  await expect(form).toBeVisible();
+  const details = await openDetails(page, row);
+  await expect(details.getByTestId("job-description")).toHaveText("Build APIs.");
+  await expect(details.getByTestId("job-url")).toHaveText("https://example.com/jobs/engineer");
   return row;
 }
 
@@ -90,6 +100,17 @@ async function generatePlan(page: Page): Promise<void> {
   await page.getByTestId("generate-interview-plan").click();
   const raw = (await requestPromise).postData();
   expect(JSON.parse(raw ?? "null")).toEqual({});
+}
+
+async function reopenAttempt(page: Page, row: Locator): Promise<void> {
+  const loaded = page.waitForResponse((response) => {
+    return (
+      response.request().method() === "GET" &&
+      /\/jobs\/[^/]+\/interview-attempts\/current$/.test(new URL(response.url()).pathname)
+    );
+  });
+  await row.getByTestId("open-interview-attempt").click();
+  await loaded;
 }
 
 async function startAttempt(page: Page, row: Locator): Promise<Locator> {
@@ -145,9 +166,12 @@ test("shows 80 and Interview Ready, keeps them during a retake, then shows 0 aft
   await expect(panel).toBeVisible();
   await expect(panel.getByTestId("interview-question-answer-input")).toHaveCount(0);
   await expect(panel.getByTestId("start-interview-attempt")).toBeVisible();
-  await expect(row.getByTestId("job-score")).toHaveText("80");
-  await expect(row.getByTestId("job-readiness")).toHaveText("Interview Ready");
+  const ready = await openDetails(page, row);
+  await expect(ready.getByTestId("job-score")).toHaveText("80");
+  await expect(ready.getByTestId("job-readiness")).toHaveText("Interview Ready");
 
+  await reopenAttempt(page, row);
+  await expect(panel.getByTestId("start-interview-attempt")).toBeVisible();
   await panel.getByTestId("start-interview-attempt").click();
   await expect(panel.getByTestId("interview-question")).toHaveCount(8);
   await expect(panel.getByTestId("interview-question-answer-input")).toHaveCount(8);
@@ -159,13 +183,16 @@ test("shows 80 and Interview Ready, keeps them during a retake, then shows 0 aft
     );
   }
   expect(retakeTexts.every((text) => !firstTexts.includes(text))).toBe(true);
-  await expect(row.getByTestId("job-score")).toHaveText("80");
-  await expect(row.getByTestId("job-readiness")).toHaveText("Interview Ready");
+  const duringRetake = await openDetails(page, row);
+  await expect(duringRetake.getByTestId("job-score")).toHaveText("80");
+  await expect(duringRetake.getByTestId("job-readiness")).toHaveText("Interview Ready");
 
+  await reopenAttempt(page, row);
   await answerAll(panel, "fail");
   await expect(panel).toBeVisible();
-  await expect(row.getByTestId("job-score")).toHaveText("0");
-  await expect(row.getByTestId("job-readiness")).toHaveText("Not available");
+  const failed = await openDetails(page, row);
+  await expect(failed.getByTestId("job-score")).toHaveText("0");
+  await expect(failed.getByTestId("job-readiness")).toHaveText("Not available");
 
   const user = await prisma.user.findUnique({ where: { email } });
   if (user === null) {

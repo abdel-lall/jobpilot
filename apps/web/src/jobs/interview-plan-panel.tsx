@@ -2,6 +2,7 @@ import type { InterviewPlan } from "@jobpilot/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
 import { Button } from "@/components/ui/button";
+import { ActivityCloseButton } from "@/jobs/activity-close";
 import { jobsQueryKey, requestErrorMessage } from "@/jobs/requests";
 import {
   generateInterviewPlan,
@@ -92,10 +93,8 @@ export function InterviewPlanPanel({
 
   return (
     <div data-testid="interview-plan-panel" className="grid gap-3">
-      <h3>Interview plan</h3>
-      <Button type="button" data-testid="close-interview-plan" onClick={onClose}>
-        Close
-      </Button>
+      <ActivityCloseButton testId="close-interview-plan" onClick={onClose} />
+      <h2 className="pr-10 text-lg font-semibold text-[var(--jp-ink)]">Interview plan</h2>
       {showLoading ? <p data-testid="interview-plan-loading">Loading plan…</p> : null}
       {query.isError ? <p>{requestErrorMessage(query.error)}</p> : null}
       {showEmpty ? <p data-testid="interview-plan-empty">No interview plan yet.</p> : null}

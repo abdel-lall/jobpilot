@@ -134,12 +134,56 @@ async function expectProfileView(page: Page): Promise<void> {
   await expect(page.getByTestId("profile-resumes")).toBeVisible();
 }
 
+async function openDetails(page: Page, row: Locator): Promise<Locator> {
+  await row.getByTestId("open-job-details").click();
+  const details = page.getByTestId("job-details");
+  await expect(details).toBeVisible();
+  return details;
+}
+
 async function expectStatuses(page: Page): Promise<void> {
-  await expect(page.getByTestId("job-analysis")).toHaveText("Current");
-  await expect(page.getByTestId("job-tailored-resume")).toHaveText("Not available");
-  await expect(page.getByTestId("job-interview-plan")).toHaveText("Not available");
-  await expect(page.getByTestId("job-score")).toHaveText("Not available");
-  await expect(page.getByTestId("job-readiness")).toHaveText("Not available");
+  const details = page.getByTestId("job-details");
+  await expect(details.getByTestId("job-analysis")).toHaveText("Current");
+  await expect(details.getByTestId("job-tailored-resume")).toHaveText("Not available");
+  await expect(details.getByTestId("job-interview-plan")).toHaveText("Not available");
+  await expect(details.getByTestId("job-score")).toHaveText("Not available");
+  await expect(details.getByTestId("job-readiness")).toHaveText("Not available");
+}
+
+async function expectDesktopWorkspace(page: Page): Promise<void> {
+  const metrics = await page.evaluate(() => {
+    const workspace = document.querySelector("[data-testid='dashboard-workspace']");
+    const menu = document.querySelector("[data-testid='jobs-menu']");
+    const active = document.querySelector("[data-testid='active-work']");
+    const main = document.querySelector("main");
+    if (
+      !(workspace instanceof HTMLElement) ||
+      !(menu instanceof HTMLElement) ||
+      !(active instanceof HTMLElement) ||
+      !(main instanceof HTMLElement)
+    ) {
+      throw new Error("missing workspace");
+    }
+    const workspaceBox = workspace.getBoundingClientRect();
+    const menuBox = menu.getBoundingClientRect();
+    const activeBox = active.getBoundingClientRect();
+    return {
+      menuOnRight: menuBox.left >= activeBox.right - 1,
+      gap: menuBox.left - activeBox.right,
+      ratio: menuBox.width / workspaceBox.width,
+      workspaceScrollsX: workspace.scrollWidth > workspace.clientWidth + 1,
+      mainScrollsX: main.scrollWidth > main.clientWidth + 1,
+      documentScrollsX: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    };
+  });
+  expect(metrics.menuOnRight).toBe(true);
+  expect(metrics.gap).toBeGreaterThan(16);
+  expect(metrics.gap).toBeLessThan(24);
+  expect(metrics.ratio).toBeGreaterThan(0.25);
+  expect(metrics.ratio).toBeLessThan(0.33);
+  expect(metrics.workspaceScrollsX).toBe(false);
+  expect(metrics.mainScrollsX).toBe(false);
+  expect(metrics.documentScrollsX).toBe(false);
 }
 
 async function fillAddJob(
@@ -152,6 +196,7 @@ async function fillAddJob(
     url: string;
   },
 ): Promise<Locator> {
+  await page.getByTestId("open-add-job").click();
   const form = page.getByRole("form", { name: "Add job" });
   await form.getByLabel("Company name").fill(values.company);
   await form.getByLabel("Job title").fill(values.title);
@@ -212,6 +257,21 @@ test("creates, reloads, edits, clears the URL, and deletes a job", async ({ page
   await expect(page.getByTestId("profile-skills")).toHaveCount(0);
   await expect(page.getByTestId("profile-resumes")).toHaveCount(0);
   await expect(page.getByTestId("jobs-empty")).toHaveText("No jobs yet.");
+  await expect(page.getByTestId("open-add-job")).toBeVisible();
+  await expect(page.getByRole("form", { name: "Add job" })).toHaveCount(0);
+  await expect(page.getByTestId("job-details")).toHaveCount(0);
+  await expect(page.getByTestId("tailored-resume-panel")).toHaveCount(0);
+  await expect(page.getByTestId("interview-plan-panel")).toHaveCount(0);
+  await expect(page.getByTestId("interview-attempt-panel")).toHaveCount(0);
+  await expect(page.getByText("Select a job action to get started.", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("active-work").getByRole("heading")).toHaveCount(0);
+
+  await page.getByTestId("open-add-job").click();
+  const openedAdd = page.getByRole("form", { name: "Add job" });
+  await expect(openedAdd).toBeVisible();
+  await page.getByTestId("active-work").getByRole("button", { name: "Close", exact: true }).click();
+  await expect(openedAdd).toHaveCount(0);
+  await expect(page.getByText("Select a job action to get started.", { exact: true })).toBeVisible();
 
   const form = await fillAddJob(page, {
     company: "Example Co",
@@ -226,11 +286,16 @@ test("creates, reloads, edits, clears the URL, and deletes a job", async ({ page
   await expect(row.getByTestId("job-company")).toHaveText("Example Co");
   await expect(row.getByTestId("job-title")).toHaveText("Engineer");
   await expect(row.getByTestId("job-location")).toHaveText("Remote");
-  await expect(row.getByTestId("job-description")).toHaveText("Build APIs.");
-  await expect(row.getByTestId("job-url")).toHaveText("https://example.com/jobs/engineer");
-  await expectStatuses(page);
   await expect(page.getByTestId("jobs-empty")).toHaveCount(0);
   await expect(page.getByRole("form", { name: "Add job" })).toBeVisible();
+  await expectDesktopWorkspace(page);
+  const details = await openDetails(page, row);
+  await expect(details.getByTestId("job-description")).toHaveText("Build APIs.");
+  await expect(details.getByTestId("job-url")).toHaveText("https://example.com/jobs/engineer");
+  await expectStatuses(page);
+  await page.getByTestId("active-work").getByRole("button", { name: "Close", exact: true }).click();
+  await expect(page.getByTestId("job-details")).toHaveCount(0);
+  await expect(page.getByText("Select a job action to get started.", { exact: true })).toBeVisible();
 
   await page.getByTestId("nav-profile").click();
   await expectProfileView(page);
@@ -242,6 +307,7 @@ test("creates, reloads, edits, clears the URL, and deletes a job", async ({ page
   await page.getByTestId("nav-dashboard").click();
   await expect(row.getByTestId("job-company")).toHaveText("Example Co");
   await expect(row.getByTestId("job-title")).toHaveText("Engineer");
+  await openDetails(page, row);
   await expectStatuses(page);
 
   await page.getByRole("button", { name: "Edit job", exact: true }).click();
@@ -250,13 +316,15 @@ test("creates, reloads, edits, clears the URL, and deletes a job", async ({ page
   await editTitle.getByRole("button", { name: "Save job", exact: true }).click();
   await expect(row.getByTestId("job-title")).toHaveText("Senior Engineer");
   await expect(row.getByTestId("job-company")).toHaveText("Example Co");
+  await openDetails(page, row);
   await expectStatuses(page);
 
   await page.getByRole("button", { name: "Edit job", exact: true }).click();
   const editDescription = page.getByRole("form", { name: "Edit job" });
   await editDescription.getByLabel("Job description").fill("Build reliable APIs.");
   await editDescription.getByRole("button", { name: "Save job", exact: true }).click();
-  await expect(row.getByTestId("job-description")).toHaveText("Build reliable APIs.");
+  const editedDetails = await openDetails(page, row);
+  await expect(editedDetails.getByTestId("job-description")).toHaveText("Build reliable APIs.");
   await expect(row.getByTestId("job-title")).toHaveText("Senior Engineer");
   await expectStatuses(page);
 
@@ -268,12 +336,16 @@ test("creates, reloads, edits, clears the URL, and deletes a job", async ({ page
   await editUrl.getByLabel("Job URL").fill("");
   await editUrl.getByRole("button", { name: "Save job", exact: true }).click();
   expect(readJobUrl(await clearRequest)).toBeNull();
-  await expect(row.getByTestId("job-url")).toHaveCount(0);
+  const clearedDetails = await openDetails(page, row);
+  await expect(clearedDetails.getByTestId("job-url")).toHaveCount(0);
   await expect(row.getByTestId("job-title")).toHaveText("Senior Engineer");
 
   await page.getByRole("button", { name: "Delete job", exact: true }).click();
   await expect(page.getByTestId("jobs-empty")).toHaveText("No jobs yet.");
   await expect(page.getByTestId("job-row")).toHaveCount(0);
+  await expect(page.getByTestId("job-details")).toHaveCount(0);
+  await expect(page.getByRole("form", { name: "Edit job" })).toHaveCount(0);
+  await expect(page.getByText("Select a job action to get started.", { exact: true })).toBeVisible();
 });
 
 test("shows loading until the first jobs list succeeds", async ({ page }) => {
@@ -298,6 +370,7 @@ test("shows loading until the first jobs list succeeds", async ({ page }) => {
   );
   await page.getByTestId("nav-dashboard").click();
   await expect(page.getByTestId("jobs-loading")).toHaveText("Loading jobs…");
+  await expect(page.getByTestId("open-add-job")).toBeVisible();
   await expect(page.getByText("No jobs yet.", { exact: true })).toHaveCount(0);
 
   openGate(gate);
@@ -322,6 +395,7 @@ test("shows the jobs list error and hides the empty state", async ({ page }) => 
   await login(page, email);
   await page.getByTestId("nav-dashboard").click();
   await expect(page.getByTestId("dashboard").getByRole("alert")).toHaveText("Invalid input");
+  await expect(page.getByTestId("open-add-job")).toBeVisible();
   await expect(page.getByText("No jobs yet.", { exact: true })).toHaveCount(0);
   await expect(page.getByTestId("job-row")).toHaveCount(0);
 });

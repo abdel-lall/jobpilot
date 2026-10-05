@@ -2,6 +2,7 @@ import type { TailoredResume } from "@jobpilot/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { ActivityCloseButton } from "@/jobs/activity-close";
 import { jobsQueryKey, requestErrorMessage } from "@/jobs/requests";
 import {
   generateTailoredResume,
@@ -161,10 +162,8 @@ export function TailoredResumePanel({
 
   return (
     <div data-testid="tailored-resume-panel" className="grid gap-3">
-      <h3>Tailored resume</h3>
-      <Button type="button" data-testid="close-tailored-resume" onClick={onClose}>
-        Close
-      </Button>
+      <ActivityCloseButton testId="close-tailored-resume" onClick={onClose} />
+      <h2 className="pr-10 text-lg font-semibold text-[var(--jp-ink)]">Tailored resume</h2>
       {showLoading ? <p data-testid="tailored-resume-loading">Loading resume…</p> : null}
       {query.isError ? <p>{requestErrorMessage(query.error)}</p> : null}
       {showEmpty ? <p data-testid="tailored-resume-empty">No tailored resume yet.</p> : null}

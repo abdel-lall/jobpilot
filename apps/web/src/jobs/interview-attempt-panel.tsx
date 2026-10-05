@@ -2,6 +2,7 @@ import type { InterviewAttempt, InterviewQuestion } from "@jobpilot/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ActivityCloseButton } from "@/jobs/activity-close";
 import { Textarea } from "@/components/ui/textarea";
 import { jobsQueryKey, requestErrorMessage } from "@/jobs/requests";
 import {
@@ -154,10 +155,8 @@ export function InterviewAttemptPanel({
 
   return (
     <div data-testid="interview-attempt-panel" className="grid gap-3">
-      <h3>Interview attempt</h3>
-      <Button type="button" data-testid="close-interview-attempt" onClick={onClose}>
-        Close
-      </Button>
+      <ActivityCloseButton testId="close-interview-attempt" onClick={onClose} />
+      <h2 className="pr-10 text-lg font-semibold text-[var(--jp-ink)]">Interview attempt</h2>
       {showLoading ? <p data-testid="interview-attempt-loading">Loading attempt…</p> : null}
       {query.isError ? <p>{requestErrorMessage(query.error)}</p> : null}
       {showEmpty ? <p data-testid="interview-attempt-empty">No interview attempt yet.</p> : null}

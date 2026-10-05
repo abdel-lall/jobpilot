@@ -120,9 +120,7 @@ function SignedInPage({
             {view === "profile" ? (
               <ProfileSections userId={user.id} accessToken={accessToken} />
             ) : (
-              <div className="mx-auto w-full max-w-3xl">
-                <Dashboard userId={user.id} accessToken={accessToken} />
-              </div>
+              <Dashboard userId={user.id} accessToken={accessToken} />
             )}
           </div>
         </main>

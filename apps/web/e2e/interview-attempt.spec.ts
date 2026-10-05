@@ -79,8 +79,16 @@ async function registerAndLogin(page: Page): Promise<void> {
   await expect(page.getByTestId("signed-in")).toBeVisible();
 }
 
+async function openDetails(page: Page, row: Locator): Promise<Locator> {
+  await row.getByTestId("open-job-details").click();
+  const details = page.getByTestId("job-details");
+  await expect(details).toBeVisible();
+  return details;
+}
+
 async function createExampleJob(page: Page): Promise<Locator> {
   await page.getByTestId("nav-dashboard").click();
+  await page.getByTestId("open-add-job").click();
   const form = page.getByRole("form", { name: "Add job" });
   await form.getByLabel("Company name").fill("Example Co");
   await form.getByLabel("Job title").fill("Engineer");
@@ -91,9 +99,11 @@ async function createExampleJob(page: Page): Promise<Locator> {
   const row = page.getByTestId("job-row");
   await expect(row.getByTestId("job-company")).toHaveText("Example Co");
   await expect(row.getByTestId("job-title")).toHaveText("Engineer");
-  await expect(row.getByTestId("job-description")).toHaveText("Build APIs.");
   await expect(row.getByTestId("job-location")).toHaveText("Remote");
-  await expect(row.getByTestId("job-url")).toHaveText("https://example.com/jobs/engineer");
+  await expect(form).toBeVisible();
+  const details = await openDetails(page, row);
+  await expect(details.getByTestId("job-description")).toHaveText("Build APIs.");
+  await expect(details.getByTestId("job-url")).toHaveText("https://example.com/jobs/engineer");
   return row;
 }
 
@@ -126,26 +136,33 @@ test.afterAll(async () => {
 test("starts an attempt and lists 8 stub questions", async ({ page }) => {
   await registerAndLogin(page);
   const row = await createExampleJob(page);
-  await expect(row.getByTestId("job-analysis")).toHaveText("Current");
-  await expect(row.getByTestId("job-tailored-resume")).toHaveText("Not available");
-  await expect(row.getByTestId("job-interview-plan")).toHaveText("Not available");
-  await expect(row.getByTestId("job-score")).toHaveText("Not available");
-  await expect(row.getByTestId("job-readiness")).toHaveText("Not available");
+  const details = page.getByTestId("job-details");
+  await expect(details.getByTestId("job-analysis")).toHaveText("Current");
+  await expect(details.getByTestId("job-tailored-resume")).toHaveText("Not available");
+  await expect(details.getByTestId("job-interview-plan")).toHaveText("Not available");
+  await expect(details.getByTestId("job-score")).toHaveText("Not available");
+  await expect(details.getByTestId("job-readiness")).toHaveText("Not available");
 
   await row.getByTestId("open-interview-plan").click();
   const planPanel = page.getByTestId("interview-plan-panel");
   await expect(planPanel.getByTestId("interview-plan-empty")).toHaveText("No interview plan yet.");
   await generatePlan(page);
   await expect(planPanel.getByTestId("plan-category").filter({ hasText: "Backend" })).toBeVisible();
-  await expect(row.getByTestId("job-interview-plan")).toHaveText("Present");
+  const planned = await openDetails(page, row);
+  await expect(planned.getByTestId("job-interview-plan")).toHaveText("Present");
 
   await row.getByTestId("open-interview-attempt").click();
   await expect(planPanel).toHaveCount(0);
   const panel = page.getByTestId("interview-attempt-panel");
   await expect(panel).toBeVisible();
+  await expect(page.getByTestId("active-work").getByTestId("interview-attempt-panel")).toHaveCount(1);
+  await expect(panel.getByTestId("close-interview-attempt")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Close", exact: true })).toHaveCount(1);
+  await expect(page.getByTestId("tailored-resume-panel")).toHaveCount(0);
+  await expect(page.getByTestId("interview-plan-panel")).toHaveCount(0);
   await expect(panel.getByTestId("interview-attempt-empty")).toHaveText("No interview attempt yet.");
   await expect(panel.getByTestId("interview-question")).toHaveCount(0);
-  await expect(row.getByTestId("open-interview-attempt")).toHaveCount(0);
+  await expect(row.getByTestId("open-interview-attempt")).toBeVisible();
 
   const requestPromise = page.waitForRequest(
     (request) => request.method() === "POST" && isInterviewAttemptStart(new URL(request.url())),
@@ -179,11 +196,15 @@ test("starts an attempt and lists 8 stub questions", async ({ page }) => {
   await expect(panel.getByTestId("interview-question-answer-input")).toHaveCount(8);
   await expect(panel.getByRole("button", { name: "Submit answer" })).toHaveCount(8);
   await expect(panel.getByTestId("interview-question-submit")).toHaveCount(8);
+  await expect(page.getByTestId("jobs-menu").getByRole("button", { name: "Submit answer" })).toHaveCount(0);
   await expect(panel.getByTestId("start-interview-attempt")).toHaveCount(0);
   await expect(panel.getByTestId("interview-attempt-empty")).toHaveCount(0);
-  await expect(row.getByTestId("job-score")).toHaveText("Not available");
-  await expect(row.getByTestId("job-readiness")).toHaveText("Not available");
-  await expect(row.getByTestId("job-interview-plan")).toHaveText("Present");
+  await expect(panel).toBeVisible();
+  const started = await openDetails(page, row);
+  await expect(started.getByTestId("job-score")).toHaveText("Not available");
+  await expect(started.getByTestId("job-readiness")).toHaveText("Not available");
+  await expect(started.getByTestId("job-interview-plan")).toHaveText("Present");
+  await row.getByTestId("open-interview-attempt").click();
   await expect(panel).toBeVisible();
 });
 

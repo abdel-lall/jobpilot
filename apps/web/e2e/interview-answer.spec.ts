@@ -79,8 +79,16 @@ async function registerAndLogin(page: Page): Promise<void> {
   await expect(page.getByTestId("signed-in")).toBeVisible();
 }
 
+async function openDetails(page: Page, row: Locator): Promise<Locator> {
+  await row.getByTestId("open-job-details").click();
+  const details = page.getByTestId("job-details");
+  await expect(details).toBeVisible();
+  return details;
+}
+
 async function createExampleJob(page: Page): Promise<Locator> {
   await page.getByTestId("nav-dashboard").click();
+  await page.getByTestId("open-add-job").click();
   const form = page.getByRole("form", { name: "Add job" });
   await form.getByLabel("Company name").fill("Example Co");
   await form.getByLabel("Job title").fill("Engineer");
@@ -91,9 +99,11 @@ async function createExampleJob(page: Page): Promise<Locator> {
   const row = page.getByTestId("job-row");
   await expect(row.getByTestId("job-company")).toHaveText("Example Co");
   await expect(row.getByTestId("job-title")).toHaveText("Engineer");
-  await expect(row.getByTestId("job-description")).toHaveText("Build APIs.");
   await expect(row.getByTestId("job-location")).toHaveText("Remote");
-  await expect(row.getByTestId("job-url")).toHaveText("https://example.com/jobs/engineer");
+  await expect(form).toBeVisible();
+  const details = await openDetails(page, row);
+  await expect(details.getByTestId("job-description")).toHaveText("Build APIs.");
+  await expect(details.getByTestId("job-url")).toHaveText("https://example.com/jobs/engineer");
   return row;
 }
 
@@ -170,8 +180,9 @@ test("submits one answer and shows feedback and the score on that question only"
     await expect(question.getByTestId("interview-question-feedback")).toHaveCount(0);
   }
 
-  await expect(row.getByTestId("job-score")).toHaveText("Not available");
-  await expect(row.getByTestId("job-readiness")).toHaveText("Not available");
+  const details = await openDetails(page, row);
+  await expect(details.getByTestId("job-score")).toHaveText("Not available");
+  await expect(details.getByTestId("job-readiness")).toHaveText("Not available");
 });
 
 test("shows the evaluation error and keeps the answer box", async ({ page }) => {

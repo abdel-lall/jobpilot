@@ -83,8 +83,16 @@ async function addSkill(page: Page, name: string): Promise<void> {
   await expect(page.getByTestId("profile-skills").getByText(name, { exact: true })).toBeVisible();
 }
 
+async function openDetails(page: Page, row: Locator): Promise<Locator> {
+  await row.getByTestId("open-job-details").click();
+  const details = page.getByTestId("job-details");
+  await expect(details).toBeVisible();
+  return details;
+}
+
 async function createExampleJob(page: Page): Promise<Locator> {
   await page.getByTestId("nav-dashboard").click();
+  await page.getByTestId("open-add-job").click();
   const form = page.getByRole("form", { name: "Add job" });
   await form.getByLabel("Company name").fill("Example Co");
   await form.getByLabel("Job title").fill("Engineer");
@@ -95,9 +103,11 @@ async function createExampleJob(page: Page): Promise<Locator> {
   const row = page.getByTestId("job-row");
   await expect(row.getByTestId("job-company")).toHaveText("Example Co");
   await expect(row.getByTestId("job-title")).toHaveText("Engineer");
-  await expect(row.getByTestId("job-description")).toHaveText("Build APIs.");
   await expect(row.getByTestId("job-location")).toHaveText("Remote");
-  await expect(row.getByTestId("job-url")).toHaveText("https://example.com/jobs/engineer");
+  await expect(form).toBeVisible();
+  const details = await openDetails(page, row);
+  await expect(details.getByTestId("job-description")).toHaveText("Build APIs.");
+  await expect(details.getByTestId("job-url")).toHaveText("https://example.com/jobs/engineer");
   return row;
 }
 
@@ -141,24 +151,31 @@ test("generates, replaces, and clears a tailored resume", async ({ page }) => {
   await registerAndLogin(page);
   await addSkill(page, "TypeScript");
   const row = await createExampleJob(page);
-  await expect(row.getByTestId("job-analysis")).toHaveText("Current");
-  await expect(row.getByTestId("job-tailored-resume")).toHaveText("Not available");
-  await expect(row.getByTestId("job-interview-plan")).toHaveText("Not available");
-  await expect(row.getByTestId("job-score")).toHaveText("Not available");
-  await expect(row.getByTestId("job-readiness")).toHaveText("Not available");
+  const details = page.getByTestId("job-details");
+  await expect(details.getByTestId("job-analysis")).toHaveText("Current");
+  await expect(details.getByTestId("job-tailored-resume")).toHaveText("Not available");
+  await expect(details.getByTestId("job-interview-plan")).toHaveText("Not available");
+  await expect(details.getByTestId("job-score")).toHaveText("Not available");
+  await expect(details.getByTestId("job-readiness")).toHaveText("Not available");
 
   await row.getByTestId("open-tailored-resume").click();
   const panel = page.getByTestId("tailored-resume-panel");
   await expect(panel).toBeVisible();
+  await expect(page.getByTestId("active-work").getByTestId("tailored-resume-panel")).toHaveCount(1);
+  await expect(panel.getByTestId("close-tailored-resume")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Close", exact: true })).toHaveCount(1);
+  await expect(page.getByTestId("interview-plan-panel")).toHaveCount(0);
+  await expect(page.getByTestId("interview-attempt-panel")).toHaveCount(0);
   await expect(panel.getByTestId("tailored-resume-empty")).toHaveText("No tailored resume yet.");
   await expect(panel.getByTestId("resume-skill")).toHaveCount(0);
-  await expect(row.getByTestId("open-tailored-resume")).toHaveCount(0);
+  await expect(row.getByTestId("open-tailored-resume")).toBeVisible();
 
   await generateResume(page);
   await expect(panel.getByTestId("resume-skill").filter({ hasText: "TypeScript" })).toBeVisible();
   await expect(panel.getByTestId("tailored-resume-empty")).toHaveCount(0);
-  await expect(row.getByTestId("job-tailored-resume")).toHaveText("Present");
   await expect(panel).toBeVisible();
+  const generated = await openDetails(page, row);
+  await expect(generated.getByTestId("job-tailored-resume")).toHaveText("Present");
 
   await page.getByTestId("nav-profile").click();
   await addSkill(page, "Go");
@@ -170,16 +187,19 @@ test("generates, replaces, and clears a tailored resume", async ({ page }) => {
   await generateResume(page);
   await expect(panel.getByTestId("resume-skill").filter({ hasText: "TypeScript" })).toBeVisible();
   await expect(panel.getByTestId("resume-skill").filter({ hasText: "Go" })).toBeVisible();
-  await expect(row.getByTestId("job-tailored-resume")).toHaveText("Present");
   await expect(panel).toBeVisible();
+  const replaced = await openDetails(page, row);
+  await expect(replaced.getByTestId("job-tailored-resume")).toHaveText("Present");
 
   await row.getByRole("button", { name: "Edit job", exact: true }).click();
   const edit = page.getByRole("form", { name: "Edit job" });
   await edit.getByLabel("Job description").fill("Build reliable APIs.");
   await edit.getByRole("button", { name: "Save job", exact: true }).click();
-  await expect(row.getByTestId("job-description")).toHaveText("Build reliable APIs.");
-  await expect(row.getByTestId("job-analysis")).toHaveText("Current");
-  await expect(row.getByTestId("job-tailored-resume")).toHaveText("Not available");
+  const cleared = await openDetails(page, row);
+  await expect(cleared.getByTestId("job-description")).toHaveText("Build reliable APIs.");
+  await expect(cleared.getByTestId("job-analysis")).toHaveText("Current");
+  await expect(cleared.getByTestId("job-tailored-resume")).toHaveText("Not available");
+  await row.getByTestId("open-tailored-resume").click();
   await expect(panel.getByTestId("tailored-resume-empty")).toHaveText("No tailored resume yet.");
   await expect(panel.getByTestId("resume-skill").filter({ hasText: "TypeScript" })).toHaveCount(0);
   await expect(panel.getByTestId("resume-skill").filter({ hasText: "Go" })).toHaveCount(0);
@@ -187,10 +207,12 @@ test("generates, replaces, and clears a tailored resume", async ({ page }) => {
   await generateResume(page);
   await expect(panel.getByTestId("resume-skill").filter({ hasText: "TypeScript" })).toBeVisible();
   await expect(panel.getByTestId("resume-skill").filter({ hasText: "Go" })).toBeVisible();
-  await expect(row.getByTestId("job-tailored-resume")).toHaveText("Present");
-  await expect(row.getByTestId("job-interview-plan")).toHaveText("Not available");
-  await expect(row.getByTestId("job-score")).toHaveText("Not available");
-  await expect(row.getByTestId("job-readiness")).toHaveText("Not available");
+  const restored = await openDetails(page, row);
+  await expect(restored.getByTestId("job-tailored-resume")).toHaveText("Present");
+  await expect(restored.getByTestId("job-interview-plan")).toHaveText("Not available");
+  await expect(restored.getByTestId("job-score")).toHaveText("Not available");
+  await expect(restored.getByTestId("job-readiness")).toHaveText("Not available");
+  await row.getByTestId("open-tailored-resume").click();
   await expect(panel).toBeVisible();
 });
 
@@ -291,7 +313,8 @@ test("shows the generate error when no resume exists", async ({ page }) => {
   await expect(panel.getByText("Resume generation failed", { exact: true })).toBeVisible();
   await expect(panel.getByTestId("tailored-resume-empty")).toHaveText("No tailored resume yet.");
   await expect(panel.getByTestId("resume-skill")).toHaveCount(0);
-  await expect(row.getByTestId("job-tailored-resume")).toHaveText("Not available");
+  const details = await openDetails(page, row);
+  await expect(details.getByTestId("job-tailored-resume")).toHaveText("Not available");
 });
 
 test("keeps the current resume when generate fails", async ({ page }) => {
@@ -303,13 +326,18 @@ test("keeps the current resume when generate fails", async ({ page }) => {
   await expect(panel.getByTestId("tailored-resume-empty")).toHaveText("No tailored resume yet.");
   await generateResume(page);
   await expect(panel.getByTestId("resume-skill").filter({ hasText: "TypeScript" })).toBeVisible();
-  await expect(row.getByTestId("job-tailored-resume")).toHaveText("Present");
+  const present = await openDetails(page, row);
+  await expect(present.getByTestId("job-tailored-resume")).toHaveText("Present");
+  await row.getByTestId("open-tailored-resume").click();
 
   await stubGenerateFailure(page);
   await generateResume(page);
   await expect(panel.getByText("Resume generation failed", { exact: true })).toBeVisible();
   await expect(panel.getByTestId("resume-skill").filter({ hasText: "TypeScript" })).toBeVisible();
   await expect(panel.getByTestId("tailored-resume-empty")).toHaveCount(0);
-  await expect(row.getByTestId("job-tailored-resume")).toHaveText("Present");
+  await expect(panel).toBeVisible();
+  const details = await openDetails(page, row);
+  await expect(details.getByTestId("job-tailored-resume")).toHaveText("Present");
+  await row.getByTestId("open-tailored-resume").click();
   await expect(panel).toBeVisible();
 });
