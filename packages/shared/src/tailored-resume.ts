@@ -1,13 +1,29 @@
 import { z } from "zod";
-import { calendarDateSchema } from "./profile.js";
 
 function trimmedString(min: number, max: number) {
   return z.string().trim().min(min).max(max);
 }
 
-const sourceIdSchema = z
-  .string()
-  .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+function sourceIdSchema() {
+  return z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+}
+
+function calendarDateSchema() {
+  return z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .refine((value) => {
+      const year = Number(value.slice(0, 4));
+      const month = Number(value.slice(5, 7));
+      const day = Number(value.slice(8, 10));
+      const date = new Date(Date.UTC(year, month - 1, day));
+      return (
+        date.getUTCFullYear() === year &&
+        date.getUTCMonth() === month - 1 &&
+        date.getUTCDate() === day
+      );
+    });
+}
 
 const urlSchema = trimmedString(1, 500).refine((value) => {
   const UrlCtor = (globalThis as { URL?: new (input: string) => { protocol: string } }).URL;
@@ -24,18 +40,18 @@ const urlSchema = trimmedString(1, 500).refine((value) => {
 
 const skillItemSchema = z
   .object({
-    sourceId: sourceIdSchema,
+    sourceId: sourceIdSchema(),
     name: trimmedString(1, 80),
   })
   .strict();
 
 const experienceItemSchema = z
   .object({
-    sourceId: sourceIdSchema,
+    sourceId: sourceIdSchema(),
     employer: trimmedString(1, 200),
     jobTitle: trimmedString(1, 200),
-    startDate: calendarDateSchema,
-    endDate: calendarDateSchema.nullable(),
+    startDate: calendarDateSchema(),
+    endDate: calendarDateSchema().nullable(),
     accomplishments: z.array(trimmedString(1, 500)).max(20),
     technologies: z.array(trimmedString(1, 80)).max(30),
   })
@@ -43,12 +59,12 @@ const experienceItemSchema = z
 
 const projectItemSchema = z
   .object({
-    sourceId: sourceIdSchema,
+    sourceId: sourceIdSchema(),
     name: trimmedString(1, 200),
     description: trimmedString(1, 2000),
     url: urlSchema.nullable(),
-    startDate: calendarDateSchema.nullable(),
-    endDate: calendarDateSchema.nullable(),
+    startDate: calendarDateSchema().nullable(),
+    endDate: calendarDateSchema().nullable(),
     accomplishments: z.array(trimmedString(1, 500)).max(20),
     technologies: z.array(trimmedString(1, 80)).max(30),
   })
@@ -56,22 +72,22 @@ const projectItemSchema = z
 
 const educationItemSchema = z
   .object({
-    sourceId: sourceIdSchema,
+    sourceId: sourceIdSchema(),
     institution: trimmedString(1, 200),
     degree: trimmedString(1, 200),
     fieldOfStudy: trimmedString(1, 200),
-    startDate: calendarDateSchema,
-    endDate: calendarDateSchema.nullable(),
+    startDate: calendarDateSchema(),
+    endDate: calendarDateSchema().nullable(),
   })
   .strict();
 
 const certificationItemSchema = z
   .object({
-    sourceId: sourceIdSchema,
+    sourceId: sourceIdSchema(),
     name: trimmedString(1, 200),
     issuer: trimmedString(1, 200),
-    issuedOn: calendarDateSchema,
-    expiresOn: calendarDateSchema.nullable(),
+    issuedOn: calendarDateSchema(),
+    expiresOn: calendarDateSchema().nullable(),
   })
   .strict();
 

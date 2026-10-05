@@ -1,4 +1,5 @@
-import type { JobAnalysis, TailoredResume } from "@jobpilot/shared";
+import { toJsonSchema } from "@langchain/core/utils/json_schema";
+import { tailoredResumeSchema, type JobAnalysis, type TailoredResume } from "@jobpilot/shared";
 import { describe, expect, it } from "vitest";
 import {
   assertTailoredResumeGrounded,
@@ -11,6 +12,30 @@ import {
 } from "./tailored-resume.js";
 
 delete process.env.GEMINI_API_KEY;
+
+const resumeSections = ["skills", "experience", "projects", "education", "certifications"] as const;
+
+function containsSchemaRef(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.some((item) => containsSchemaRef(item));
+  }
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  return Object.entries(value).some(([key, nested]) => key === "$ref" || containsSchemaRef(nested));
+}
+
+describe("tailored resume structured output", () => {
+  it("converts the schema to JSON Schema without $ref", () => {
+    const schema: unknown = toJsonSchema(tailoredResumeSchema);
+
+    expect(containsSchemaRef(schema)).toBe(false);
+    expect(schema).toMatchObject({
+      type: "object",
+      properties: Object.fromEntries(resumeSections.map((section) => [section, { type: "array" }])),
+    });
+  });
+});
 
 const skillId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const experienceId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
