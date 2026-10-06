@@ -8,6 +8,9 @@ export function profileCardClass(): string {
 
 export const savedLabelClass = "text-[#8EC1DE]";
 
+export const profilePrimaryButtonClass =
+  "auth-focus inline-flex h-9 w-fit items-center justify-center rounded-md bg-[#D3D3FF] px-4 text-sm font-medium text-[var(--jp-ink)] hover:bg-[#D3D3FF] hover:brightness-95";
+
 export function AddRecordButton({
   label,
   onClick,
@@ -19,7 +22,7 @@ export function AddRecordButton({
     <button
       type="button"
       aria-label={label}
-      className="auth-focus inline-flex h-9 w-fit items-center justify-center justify-self-start rounded-md bg-[#D3D3FF] px-4 text-sm font-medium text-[var(--jp-ink)] hover:bg-[#D3D3FF] hover:brightness-95"
+      className={`${profilePrimaryButtonClass} justify-self-start`}
       onClick={onClick}
     >
       Add

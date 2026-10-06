@@ -98,6 +98,36 @@ export function lines(value: string): string[] {
     .filter((line) => line.length > 0);
 }
 
+export function parseTechnologies(value: string): string[] {
+  if (value.trim().length === 0) {
+    return [];
+  }
+  return value.split(",").map((item) => item.trim());
+}
+
+function hasEmptyTechnology(value: string): boolean {
+  return parseTechnologies(value).some((item) => item.length === 0);
+}
+
+function rejectEmptyTechnologies<TValues extends FieldValues & { technologies: string }, TOutput>(
+  resolver: Resolver<TValues, unknown, TOutput>,
+): Resolver<TValues, unknown, TOutput> {
+  return (values, context, options) => {
+    if (!hasEmptyTechnology(values.technologies)) {
+      return resolver(values, context, options);
+    }
+    return {
+      values: {} as Record<string, never>,
+      errors: {
+        technologies: {
+          type: "custom",
+          message: "Remove empty technology entries.",
+        },
+      } as FieldErrors<TValues>,
+    };
+  };
+}
+
 function omittedOrValue(value: string): { include: false } | { include: true; value: string } {
   if (value === "") {
     return { include: false };
@@ -134,7 +164,7 @@ function experienceCreateBody(values: ExperienceFormValues): unknown {
     startDate: values.startDate,
     ...(endDate.include ? { endDate: endDate.value } : {}),
     accomplishments: lines(values.accomplishments),
-    technologies: lines(values.technologies),
+    technologies: parseTechnologies(values.technologies),
   };
 }
 
@@ -145,7 +175,7 @@ function experienceEditBody(values: ExperienceFormValues): unknown {
     startDate: values.startDate,
     endDate: values.endDate === "" ? null : values.endDate,
     accomplishments: lines(values.accomplishments),
-    technologies: lines(values.technologies),
+    technologies: parseTechnologies(values.technologies),
   };
 }
 
@@ -160,7 +190,7 @@ function projectCreateBody(values: ProjectFormValues): unknown {
     ...(startDate.include ? { startDate: startDate.value } : {}),
     ...(endDate.include ? { endDate: endDate.value } : {}),
     accomplishments: lines(values.accomplishments),
-    technologies: lines(values.technologies),
+    technologies: parseTechnologies(values.technologies),
   };
 }
 
@@ -172,7 +202,7 @@ function projectEditBody(values: ProjectFormValues): unknown {
     startDate: values.startDate === "" ? null : values.startDate,
     endDate: values.endDate === "" ? null : values.endDate,
     accomplishments: lines(values.accomplishments),
-    technologies: lines(values.technologies),
+    technologies: parseTechnologies(values.technologies),
   };
 }
 
@@ -263,26 +293,34 @@ export const educationEditResolver = editResolver<EducationFormValues, UpdateEdu
   updateEducationBodySchema,
 );
 
-export const experienceCreateResolver = schemaResolver<ExperienceFormValues, CreateWorkExperienceBody>(
-  experienceCreateBody,
-  createWorkExperienceBodySchema,
+export const experienceCreateResolver = rejectEmptyTechnologies(
+  schemaResolver<ExperienceFormValues, CreateWorkExperienceBody>(
+    experienceCreateBody,
+    createWorkExperienceBodySchema,
+  ),
 );
 
-export const experienceEditResolver = editResolver<ExperienceFormValues, UpdateWorkExperienceBody>(
-  experienceEditBody,
-  createWorkExperienceBodySchema,
-  updateWorkExperienceBodySchema,
+export const experienceEditResolver = rejectEmptyTechnologies(
+  editResolver<ExperienceFormValues, UpdateWorkExperienceBody>(
+    experienceEditBody,
+    createWorkExperienceBodySchema,
+    updateWorkExperienceBodySchema,
+  ),
 );
 
-export const projectCreateResolver = schemaResolver<ProjectFormValues, CreateProjectBody>(
-  projectCreateBody,
-  createProjectBodySchema,
+export const projectCreateResolver = rejectEmptyTechnologies(
+  schemaResolver<ProjectFormValues, CreateProjectBody>(
+    projectCreateBody,
+    createProjectBodySchema,
+  ),
 );
 
-export const projectEditResolver = editResolver<ProjectFormValues, UpdateProjectBody>(
-  projectEditBody,
-  createProjectBodySchema,
-  updateProjectBodySchema,
+export const projectEditResolver = rejectEmptyTechnologies(
+  editResolver<ProjectFormValues, UpdateProjectBody>(
+    projectEditBody,
+    createProjectBodySchema,
+    updateProjectBodySchema,
+  ),
 );
 
 export const certificationCreateResolver = schemaResolver<CertificationFormValues, CreateCertificationBody>(
@@ -313,7 +351,7 @@ export function experienceFormValues(record: WorkExperience): ExperienceFormValu
     startDate: record.startDate,
     endDate: record.endDate ?? "",
     accomplishments: record.accomplishments.join("\n"),
-    technologies: record.technologies.join("\n"),
+    technologies: record.technologies.join(", "),
   };
 }
 
@@ -325,7 +363,7 @@ export function projectFormValues(record: Project): ProjectFormValues {
     startDate: record.startDate ?? "",
     endDate: record.endDate ?? "",
     accomplishments: record.accomplishments.join("\n"),
-    technologies: record.technologies.join("\n"),
+    technologies: record.technologies.join(", "),
   };
 }
 

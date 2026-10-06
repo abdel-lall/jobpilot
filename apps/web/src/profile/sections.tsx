@@ -29,6 +29,7 @@ import {
   EditIcon,
   RecordIconButton,
   profileCardClass,
+  profilePrimaryButtonClass,
   savedLabelClass,
 } from "@/profile/record-actions";
 import {
@@ -92,6 +93,7 @@ import {
 
 const ongoingHelp = "Leave blank if ongoing.";
 const expiresHelp = "Leave blank if it does not expire.";
+const technologiesHelp = "Separate technologies with commas.";
 
 type SectionProps = {
   userId: string;
@@ -192,10 +194,12 @@ function LinesField<T extends FieldValues>({
   control,
   name,
   label,
+  description,
 }: {
   control: Control<T>;
   name: FieldPath<T>;
   label: string;
+  description?: string;
 }) {
   return (
     <FormField
@@ -207,6 +211,7 @@ function LinesField<T extends FieldValues>({
           <FormControl>
             <Textarea {...field} value={typeof field.value === "string" ? field.value : ""} />
           </FormControl>
+          {description !== undefined ? <FormDescription>{description}</FormDescription> : null}
           <FormMessage />
         </FormItem>
       )}
@@ -301,7 +306,7 @@ function SubmitRow({
 }) {
   return (
     <div className="flex flex-wrap gap-2">
-      <Button type="submit" disabled={submitting}>
+      <Button type="submit" className={profilePrimaryButtonClass} disabled={submitting}>
         {label}
       </Button>
       {onCancel !== undefined ? (
@@ -703,7 +708,12 @@ function ExperienceFields({ control }: { control: Control<ExperienceFormValues> 
         description={ongoingHelp}
       />
       <LinesField control={control} name="accomplishments" label="Accomplishments" />
-      <LinesField control={control} name="technologies" label="Technologies" />
+      <LinesField
+        control={control}
+        name="technologies"
+        label="Technologies"
+        description={technologiesHelp}
+      />
     </>
   );
 }
@@ -878,7 +888,12 @@ function ProjectFields({ control }: { control: Control<ProjectFormValues> }) {
         description={ongoingHelp}
       />
       <LinesField control={control} name="accomplishments" label="Accomplishments" />
-      <LinesField control={control} name="technologies" label="Technologies" />
+      <LinesField
+        control={control}
+        name="technologies"
+        label="Technologies"
+        description={technologiesHelp}
+      />
     </>
   );
 }
