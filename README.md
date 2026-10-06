@@ -4,6 +4,12 @@ JobPilot AI is a full-stack AI-powered job preparation platform that helps candi
 
 The application combines a React/TypeScript frontend, Node.js/Express API, PostgreSQL with Prisma, an MCP server for candidate-data access, and LangChain/LangGraph workflows powered by Gemini.
 
+## Screenshots
+<img width="3071" height="1680" alt="Screenshot 2026-10-05 220029" src="https://github.com/user-attachments/assets/e0f93203-ab2c-456e-acf0-4df8e37e305c" />
+<img width="3071" height="1685" alt="Screenshot 2026-10-05 215932" src="https://github.com/user-attachments/assets/b895b676-eff6-42b5-a3d0-4019028dbd62" />
+<img width="3071" height="1687" alt="Screenshot 2026-10-05 220011" src="https://github.com/user-attachments/assets/7a492799-3c6c-49f4-a57f-4121e6462a27" />
+
+
 ---
 
 ## Features
