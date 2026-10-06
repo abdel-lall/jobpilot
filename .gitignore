@@ -28,3 +28,6 @@ blob-report/
 
 # local file storage (future resume uploads)
 storage/
+
+specs/
+cursor/
