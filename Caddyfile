@@ -1,0 +1,24 @@
+{
+	admin off
+}
+
+jobpilot.tech {
+	encode gzip zstd
+
+	@api path /health /auth /auth/* /profile /profile/* /jobs /jobs/*
+	handle @api {
+		reverse_proxy api:3000 {
+			transport http {
+				response_header_timeout 5m
+			}
+		}
+	}
+
+	handle {
+		reverse_proxy web:80
+	}
+}
+
+www.jobpilot.tech {
+	redir https://jobpilot.tech{uri} permanent
+}

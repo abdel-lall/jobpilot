@@ -1,0 +1,143 @@
+# Production stack for one Droplet. Only Caddy publishes host ports.
+# Apply migrations once, after postgres is up and before relying on the API:
+#   docker compose -f docker-compose.prod.yml run --rm api pnpm --filter @jobpilot/database exec prisma migrate deploy
+
+name: jobpilot-prod
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    logging: *logging
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile.prod
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    logging: *logging
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      WEB_ORIGIN: https://jobpilot.tech
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-postgres}
+      MCP_URL: http://portfolio-mcp:3010/mcp
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      MCP_SHARED_SECRET: ${MCP_SHARED_SECRET:?Set MCP_SHARED_SECRET in .env}
+      RESUME_STORAGE_DIR: /var/lib/jobpilot/resumes
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?Set GEMINI_API_KEY in .env}
+      GEMINI_MODEL: ${GEMINI_MODEL:-}
+      GEMINI_EMBEDDING_MODEL: ${GEMINI_EMBEDDING_MODEL:-}
+      JOB_ANALYSIS_MODEL: ${JOB_ANALYSIS_MODEL:-gemini}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-gemini}
+      RESUME_MODEL: ${RESUME_MODEL:-gemini}
+      INTERVIEW_PLAN_MODEL: ${INTERVIEW_PLAN_MODEL:-gemini}
+      INTERVIEW_QUESTION_MODEL: ${INTERVIEW_QUESTION_MODEL:-gemini}
+      ANSWER_EVALUATION_MODEL: ${ANSWER_EVALUATION_MODEL:-gemini}
+    volumes:
+      - resume-files:/var/lib/jobpilot/resumes
+    depends_on:
+      postgres:
+        condition: service_healthy
+      portfolio-mcp:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    logging: *logging
+
+  portfolio-mcp:
+    build:
+      context: .
+      dockerfile: apps/portfolio-mcp/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      MCP_PORT: "3010"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-postgres}
+      MCP_SHARED_SECRET: ${MCP_SHARED_SECRET:?Set MCP_SHARED_SECRET in .env}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?Set GEMINI_API_KEY in .env}
+      GEMINI_EMBEDDING_MODEL: ${GEMINI_EMBEDDING_MODEL:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-gemini}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3010/mcp').then((r)=>process.exit(r.status===405?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    logging: *logging
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    logging: *logging
+
+volumes:
+  postgres-data:
+  resume-files:
+  caddy-data:
+  caddy-config:

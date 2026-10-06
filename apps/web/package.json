@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "build": "vite build",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.e2e.json",
     "test:e2e": "pnpm --filter @jobpilot/database build && playwright test"
   },
