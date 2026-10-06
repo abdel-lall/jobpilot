@@ -175,6 +175,7 @@ test("starts an attempt and lists 8 stub questions", async ({ page }) => {
   await expect(questions).toHaveCount(8);
   for (let index = 0; index < 4; index += 1) {
     const question = questions.nth(index);
+    await expect(question.getByTestId("interview-question-number")).toHaveText(`Question ${index + 1}`);
     await expect(question.getByTestId("interview-question-category")).toHaveText("Backend");
     await expect(question.getByTestId("interview-question-text")).toHaveText(
       `Stub Backend question ${index + 1}`,
@@ -184,6 +185,9 @@ test("starts an attempt and lists 8 stub questions", async ({ page }) => {
   }
   for (let index = 0; index < 4; index += 1) {
     const question = questions.nth(index + 4);
+    await expect(question.getByTestId("interview-question-number")).toHaveText(
+      `Question ${index + 5}`,
+    );
     await expect(question.getByTestId("interview-question-category")).toHaveText(
       "Behavioral questions",
     );
@@ -195,6 +199,13 @@ test("starts an attempt and lists 8 stub questions", async ({ page }) => {
   }
   await expect(panel.getByTestId("interview-question-answer-input")).toHaveCount(8);
   await expect(panel.getByRole("button", { name: "Submit answer" })).toHaveCount(8);
+  const firstQuestion = questions.first();
+  const submitBox = await firstQuestion.getByTestId("interview-question-submit").boundingBox();
+  const questionBox = await firstQuestion.boundingBox();
+  if (submitBox === null || questionBox === null) {
+    throw new Error("Submit answer box was not measurable");
+  }
+  expect(submitBox.width).toBeLessThan(questionBox.width);
   await expect(panel.getByTestId("interview-question-submit")).toHaveCount(8);
   await expect(page.getByTestId("jobs-menu").getByRole("button", { name: "Submit answer" })).toHaveCount(0);
   await expect(panel.getByTestId("start-interview-attempt")).toHaveCount(0);

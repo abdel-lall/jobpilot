@@ -44,6 +44,7 @@ import {
 
 type DashboardProps = {
   userId: string;
+  email: string;
   accessToken: string | null;
 };
 
@@ -203,7 +204,7 @@ function SubmitRow({
 }) {
   return (
     <div className="flex flex-wrap gap-2">
-      <Button type="submit" disabled={submitting}>
+      <Button type="submit" variant="accent" disabled={submitting}>
         {label}
       </Button>
       {onCancel !== undefined ? (
@@ -489,6 +490,7 @@ function JobDetailsCard({ job, onClose }: { job: Job; onClose: () => void }) {
 
 function ActiveActivity({
   userId,
+  email,
   accessToken,
   job,
   activity,
@@ -498,6 +500,7 @@ function ActiveActivity({
   onSaved,
 }: {
   userId: string;
+  email: string;
   accessToken: string | null;
   job: Job | null;
   activity: Activity;
@@ -548,6 +551,10 @@ function ActiveActivity({
           key={job.id}
           userId={userId}
           jobId={job.id}
+          email={email}
+          companyName={job.companyName}
+          jobTitle={job.jobTitle}
+          tailoredResumePresent={job.status.tailoredResumePresent}
           accessToken={accessToken}
           onClose={onClose}
         />
@@ -582,7 +589,7 @@ function ActiveActivity({
   );
 }
 
-export function Dashboard({ userId, accessToken }: DashboardProps) {
+export function Dashboard({ userId, email, accessToken }: DashboardProps) {
   const queryClient = useQueryClient();
   const accessTokenRef = useRef(accessToken);
   accessTokenRef.current = accessToken;
@@ -721,6 +728,7 @@ export function Dashboard({ userId, accessToken }: DashboardProps) {
           ) : (
             <ActiveActivity
               userId={userId}
+              email={email}
               accessToken={accessToken}
               job={activeJob}
               activity={activity}

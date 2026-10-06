@@ -102,6 +102,7 @@ export function InterviewPlanPanel({
       {showGenerate ? (
         <Button
           type="button"
+          variant="accent"
           data-testid="generate-interview-plan"
           disabled={generate.isPending}
           onClick={() => {

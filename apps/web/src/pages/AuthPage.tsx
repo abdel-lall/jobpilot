@@ -120,7 +120,7 @@ function SignedInPage({
             {view === "profile" ? (
               <ProfileSections userId={user.id} accessToken={accessToken} />
             ) : (
-              <Dashboard userId={user.id} accessToken={accessToken} />
+              <Dashboard userId={user.id} email={user.email} accessToken={accessToken} />
             )}
           </div>
         </main>

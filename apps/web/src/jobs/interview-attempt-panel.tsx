@@ -13,17 +13,22 @@ import {
 } from "@/jobs/interview-attempt";
 
 function AttemptQuestion({
+  number,
   question,
   submitDisabled,
   onSubmit,
 }: {
+  number: number;
   question: InterviewQuestion;
   submitDisabled: boolean;
   onSubmit: (questionId: string, answer: string) => void;
 }) {
   const [draft, setDraft] = useState("");
   return (
-    <li data-testid="interview-question" className="grid gap-2">
+    <li data-testid="interview-question" className="grid gap-2 border-b border-[#E5E7EB] pb-4">
+      <h3 data-testid="interview-question-number" className="text-sm font-semibold text-[var(--jp-ink)]">
+        Question {number}
+      </h3>
       <p data-testid="interview-question-text">{question.text}</p>
       <p data-testid="interview-question-category">{question.category}</p>
       <ul className="grid gap-1">
@@ -45,7 +50,9 @@ function AttemptQuestion({
           />
           <Button
             type="button"
+            variant="accent"
             data-testid="interview-question-submit"
+            className="h-9 w-fit justify-self-end"
             disabled={submitDisabled}
             onClick={() => {
               onSubmit(question.id, draft);
@@ -76,9 +83,10 @@ function AttemptQuestions({
 }) {
   return (
     <ul className="grid gap-4">
-      {attempt.questions.map((question) => (
+      {attempt.questions.map((question, index) => (
         <AttemptQuestion
           key={question.id}
+          number={index + 1}
           question={question}
           submitDisabled={submitDisabled}
           onSubmit={onSubmit}
@@ -172,6 +180,7 @@ export function InterviewAttemptPanel({
       {showEmpty || attempt?.status === "completed" ? (
         <Button
           type="button"
+          variant="accent"
           data-testid="start-interview-attempt"
           disabled={start.isPending}
           onClick={() => {

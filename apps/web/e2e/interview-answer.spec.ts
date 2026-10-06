@@ -154,7 +154,20 @@ test("submits one answer and shows feedback and the score on that question only"
   const row = await createExampleJob(page);
   const panel = await startAttempt(page, row);
   const questions = panel.getByTestId("interview-question");
+  for (let index = 0; index < 8; index += 1) {
+    await expect(questions.nth(index).getByTestId("interview-question-number")).toHaveText(
+      `Question ${index + 1}`,
+    );
+    await expect(questions.nth(index).getByTestId("interview-question-submit")).toBeVisible();
+  }
   const first = questions.first();
+  const submitBox = await first.getByTestId("interview-question-submit").boundingBox();
+  const questionBox = await first.boundingBox();
+  if (submitBox === null || questionBox === null) {
+    throw new Error("Submit answer box was not measurable");
+  }
+  expect(submitBox.width).toBeLessThan(questionBox.width);
+  await expect(page.getByTestId("jobs-menu").getByRole("button", { name: "Submit answer" })).toHaveCount(0);
   await first.getByTestId("interview-question-answer-input").fill("I would add an index.");
 
   const requestPromise = page.waitForRequest(
@@ -165,6 +178,7 @@ test("submits one answer and shows feedback and the score on that question only"
   expect(JSON.parse(raw ?? "null")).toEqual({ answer: "I would add an index." });
 
   await expect(panel).toBeVisible();
+  await expect(first.getByTestId("interview-question-number")).toHaveText("Question 1");
   await expect(first.getByTestId("interview-question-answer")).toHaveText("I would add an index.");
   await expect(first.getByTestId("interview-question-feedback")).toHaveText("stub-feedback");
   await expect(first.getByTestId("interview-question-score")).toHaveText("80");
@@ -175,6 +189,9 @@ test("submits one answer and shows feedback and the score on that question only"
 
   for (let index = 1; index < 8; index += 1) {
     const question = questions.nth(index);
+    await expect(question.getByTestId("interview-question-number")).toHaveText(
+      `Question ${index + 1}`,
+    );
     await expect(question.getByTestId("interview-question-answer-input")).toBeVisible();
     await expect(question.getByRole("button", { name: "Submit answer" })).toBeVisible();
     await expect(question.getByTestId("interview-question-feedback")).toHaveCount(0);
